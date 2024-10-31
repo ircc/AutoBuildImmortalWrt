@@ -1,0 +1,168 @@
+# 定义工作流的名称
+name: build-immortalwrt
+
+# 自定义工作流运行的显示名称，模板变量 ${{ github.actor }} 会动态替换为触发工作流的 GitHub 用户名
+run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
+# 定义工作流触发条件：手动触发（workflow_dispatch）
+on:
+  workflow_dispatch:
+    # 输入参数
+    inputs:
+      platform_type:
+        description: '请输入要编译固件对应平台'
+        required: false
+        default: 'x86-64'
+        type: choice
+        options:
+          - 'x86-64'
+          - 'Raspberry-Pi-4B'
+      firmware_version:
+        description: '请输入要编译固件版本'
+        required: false
+        default: '24.10.0'
+        type: choice
+        options:
+          - '24.10.0'
+          - '23.05.4'
+      firmware_size:
+        description: '请输入要编译固件大小（支持逗号分隔多种大小同时编译）单位(MB)'
+        required: true
+        default: '4096'
+      include_docker:
+        description: |
+          是否编译 Docker 插件
+        required: true
+        default: 'yes'
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
+
+
+# 这定义了一个名为build的作业（工作流）
+jobs:
+  build:
+    # 指定运行环境为Ubuntu 22.04
+    runs-on: ubuntu-22.04
+
+    # 设置环境变量
+    env:
+      sys_pwd: ${{ secrets.SYS_PWD }}
+      lan_ip: ${{ secrets.LAN_IP }}
+      wifi_name: ${{ secrets.WIFI_NAME }}
+      wifi_pwd: ${{ secrets.WIFI_PWD }}
+      platform_type: "${{ github.event.inputs.platform_type }}"
+      firmware_version: "${{ github.event.inputs.firmware_version }}"
+      firmware_sizes: "${{ github.event.inputs.firmware_size }}"
+      include_docker: "${{ github.event.inputs.include_docker }}"
+
+    # 定义作业（工作流）步骤
+    steps:
+       # 测试步骤，打印日志
+      - name: 打印环境变量        
+        run: |
+          echo "固件版本:${{ github.event.inputs.firmware_version }}"
+          echo "固件大小:${{ github.event.inputs.firmware_size }}"
+          echo "是否包括容器插件:${{ github.event.inputs.include_docker }}"
+          echo "固件信息 version:$firmware_version, size:$firmware_sizes, include_docker:$include_docker"
+          echo "系统信息 sys_pwd:$sys_pwd, lan_ip:$lan_ip, wifi_name:$wifi_name, wifi_pwd:$wifi_pwd"
+
+      # 检出代码仓库
+      - name: 1. 检出代码仓库
+        uses: actions/checkout@v4
+
+      # 设置构建脚本的执行权限
+      - name: 编译前环境准备
+        run: |
+          # 设置构建脚本的执行权限
+          chmod +x ${{ github.workspace }}/x86-64/build.sh     
+          
+
+
+
+      # 使用Docker构建ImmortalWrt固件
+      - name: 2. 构建ImmortalWrt固件
+        run: |
+          sys_pwd=${{ secrets.SYS_PWD }}
+          lan_ip=${{ secrets.LAN_IP }}
+          wifi_name=${{ secrets.WIFI_NAME }}
+          wifi_pwd=${{ secrets.WIFI_PWD }}
+          platform_type="${{ github.event.inputs.platform_type }}"
+          firmware_version="${{ github.event.inputs.firmware_version }}"
+          firmware_sizes="${{ github.event.inputs.firmware_size }}"
+          include_docker="${{ github.event.inputs.include_docker }}"
+          
+          # 它将 firmware_sizes 字符串按逗号分隔，拆分成数组 firmware_size_list
+          IFS=',' read -r -a firmware_size_list <<< "$firmware_sizes"
+
+          # 循环构建不同大小的固件
+          for firmware_size in "${firmware_size_list[@]}"; do
+            echo "固件信息 version: $firmware_version, size: $firmware_size, include_docker: $include_docker"
+
+            # 运行Docker容器进行构建
+            # --rm ：容器停止后自动删除，避免占用磁盘空间
+            # -i ：交互模式运行，保持标准输入打开
+            # --user root ：以root用户身份在容器内运行命令，确保有足够权限
+            # -v ：卷挂载
+            # -e ：环境变量传递
+            docker run --rm -i \
+              --user root \
+              -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
+              -v "${{ github.workspace }}/files:/home/build/immortalwrt/files" \
+              -v "${{ github.workspace }}/build.sh:/home/build/immortalwrt/build.sh" \
+              -e SYS_PWD=$sys_pwd \
+              -e LAN_IP=$lan_ip \
+              -e WIFI_NAME=$wifi_name \
+              -e WIFI_PWD=$wifi_pwd \
+              -e PART_SIZE=$firmware_size \
+              -e INCLUDE_DOCKER=$include_docker \
+              immortalwrt/imagebuilder:$platform_type-openwrt-$firmware_version /bin/bash /home/build/immortalwrt/build.sh
+          done
+
+      # 生成固件SHA-256校验和
+      - name: 生成固件SHA-256校验和
+        run: |
+          cp ${{ github.workspace }}/bin/targets/x86/64/*squashfs-combined-efi.img.gz ${{ github.workspace }}
+          for file in *squashfs-combined-efi.img.gz; do
+            sha256sum "$file" > "$file.sha256"
+            sha256sum -c "$file.sha256"
+          done
+
+      # 创建固件信息文件
+      - name: 生成固件信息文件
+        run: |
+          # 创建基本信息文件
+          echo "### ImmortalWrt 固件信息" > ${{ github.workspace }}/info.md
+          echo "- 平台: ${{ github.event.inputs.platform_type }}" >> ${{ github.workspace }}/info.md
+          echo "- 版本: ${{ github.event.inputs.firmware_version }}" >> ${{ github.workspace }}/info.md
+          echo "- 固件大小: ${{ github.event.inputs.firmware_size }} MB" >> ${{ github.workspace }}/info.md
+          
+          # 添加Docker信息
+          if [ "${{ github.event.inputs.include_docker }}" == "yes" ]; then
+            echo "- 包含Docker插件: 是" >> ${{ github.workspace }}/info.md
+          else
+            echo "- 包含Docker插件: 否" >> ${{ github.workspace }}/info.md
+          fi
+          
+          # 添加SHA256校验和信息
+          echo -e "\n### 固件SHA256校验和" >> ${{ github.workspace }}/info.md
+          for file in *squashfs-combined-efi.img.gz; do
+            echo "#### $file" >> ${{ github.workspace }}/info.md
+            echo '```' >> ${{ github.workspace }}/info.md
+            cat "$file.sha256" >> ${{ github.workspace }}/info.md
+            echo '```' >> ${{ github.workspace }}/info.md
+          done
+
+      # 将构建的固件作为Release发布
+      - name: Upload ImmortWrt as release assets
+        uses: softprops/action-gh-release@v2.2.1
+        with:
+          tag_name: Autobuild-x86-64
+          body_path: ${{ github.workspace }}/info.md
+          files: |
+            ${{ github.workspace }}/*squashfs-combined-efi.img.gz
+            ${{ github.workspace }}/*.sha256
+          token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
