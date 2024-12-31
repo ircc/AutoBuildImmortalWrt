@@ -6,11 +6,13 @@ on:
       profile:
         description: '请输入要编译固件大小 单位(MB)'
         required: true
-        default: '1024'
+        default: '4096'
 
 jobs:
   build:
     runs-on: ubuntu-22.04
+    # 确保触发工作流的用户是仓库的所有者时，才执行以下步骤。
+    if: ${{ github.event.repository.owner.id }} == ${{ github.event.sender.id }}
 
     steps:
       - name: Checkout code
@@ -36,7 +38,11 @@ jobs:
               -v "${{ github.workspace }}/x86-64/build.sh:/home/build/immortalwrt/build.sh" \
               -e PROFILE=$profile \
               immortalwrt/imagebuilder:x86-64-openwrt-23.05.4 /bin/bash /home/build/immortalwrt/build.sh
-          done
+          done 
+        env:
+          WIFI_NAME: ${{ secrets.WIFI_NAME }}
+          WIFI_PWD: ${{ secrets.WIFI_PWD }}
+          LAN_IP: ${{ secrets.LAN_IP }}
 
 
       - name: Create GitHub Release Info
@@ -58,4 +64,3 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
