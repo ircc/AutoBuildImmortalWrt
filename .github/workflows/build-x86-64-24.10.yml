@@ -8,10 +8,10 @@ on:
   workflow_dispatch:
     # 输入参数
     inputs:
-      profile:
+      firmware_size:
         description: '请输入要编译固件大小 单位(MB)'
         required: true
-        default: '1024'
+        default: '4096'
       include_docker:
         description: |
           是否编译 Docker 插件
@@ -69,7 +69,7 @@ jobs:
       - name: Build ImmortalWrt-x86-64-efi
         run: |
           # 获取输入参数
-          profiles="${{ github.event.inputs.profile }}"
+          profiles="${{ github.event.inputs.firmware_size }}"
           include_docker="${{ github.event.inputs.include_docker }}"
           IFS=',' read -r -a profile_array <<< "$profiles"
 
