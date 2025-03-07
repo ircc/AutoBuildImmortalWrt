@@ -51,7 +51,6 @@ jobs:
           keep_minimum_runs: 3 # 至少保留3个工作流运行记录，即使它们超过了retain_days指定的天数。
           token: ${{ secrets.GH_TOKEN }}
           body: |
-
             ### OpenWrt Image information
             - Default IP: 192.168.1.1
             - Default username: root
