@@ -2,7 +2,7 @@
 # Log file for debugging
 LOGFILE="/tmp/uci-defaults-log.txt"
 echo "Starting 99-custom.sh at $(date)" >> $LOGFILE
-echo "编译固件大小为: $PROFILE MB"
+echo "编译固件大小为: $PARTSIZE MB"
 echo "Include Docker: $INCLUDE_DOCKER"
 
 echo "Create pppoe-settings"
@@ -53,7 +53,7 @@ fi
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Building image with the following packages:"
 echo "$PACKAGES"
 
-make image PROFILE="generic" PACKAGES="$PACKAGES" FILES="/home/build/immortalwrt/files" ROOTFS_PARTSIZE=$PROFILE
+make image PROFILE="generic" PACKAGES="$PACKAGES" FILES="/home/build/immortalwrt/files" ROOTFS_PARTSIZE=$PARTSIZE
 
 if [ $? -ne 0 ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Error: Build failed!"

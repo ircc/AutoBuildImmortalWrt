@@ -1,11 +1,13 @@
 # 工作流名称（显示在GitHub Actions页面）
-name: build-x86-64-immortalwrt-24.10.0
+name: test github action
 
 # 自定义运行显示名称（包含触发者用户名和表情）
 run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
 
 # 触发条件：当有代码push时触发
-on: [push]
+on: 
+  #[push]  
+  workflow_dispatch:
 
 # 作业定义
 jobs:
@@ -50,14 +52,3 @@ jobs:
           retain_days: 1 # 保留最近1天的工作流运行记录。
           keep_minimum_runs: 3 # 至少保留3个工作流运行记录，即使它们超过了retain_days指定的天数。
           token: ${{ secrets.GH_TOKEN }}
-          body: |
-            ### OpenWrt Image information
-            - Default IP: 192.168.1.1
-            - Default username: root
-            - Default password: password
-            - Default WIFI name: OpenWrt
-            - Default WIFI password: none
-            ### Install to EMMC
-            - Login to OpenWrt → System → Amlogic Service → Install OpenWrt
-            ### OpenWrt Image Verification
-            - sha256sum
