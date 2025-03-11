@@ -52,6 +52,7 @@ jobs:
       lan_ip: ${{ secrets.LAN_IP }}
       wifi_name: ${{ secrets.WIFI_NAME }}
       wifi_pwd: ${{ secrets.WIFI_PWD }}
+      platform_type: "${{ github.event.inputs.platform_type }}"
       firmware_version: "${{ github.event.inputs.firmware_version }}"
       firmware_sizes: "${{ github.event.inputs.firmware_size }}"
       include_docker: "${{ github.event.inputs.include_docker }}"
@@ -64,7 +65,7 @@ jobs:
           echo "固件版本:${{ github.event.inputs.firmware_version }}"
           echo "固件大小:${{ github.event.inputs.firmware_size }}"
           echo "是否包括容器插件:${{ github.event.inputs.include_docker }}"
-          echo "固件信息 version:$firmware_version, size:$firmware_size, include_docker:$include_docker"
+          echo "固件信息 version:$firmware_version, size:$firmware_sizes, include_docker:$include_docker"
           echo "系统信息 sys_account:$sys_account, sys_pwd:$sys_pwd, lan_ip:$lan_ip, wifi_name:$wifi_name, wifi_pwd:$wifi_pwd"
 
       # 检出代码仓库
@@ -75,12 +76,7 @@ jobs:
       - name: 编译前环境准备
         run: |
           # 设置构建脚本的执行权限
-          chmod +x ${{ github.workspace }}/x86-64/build.sh
-          
-          # 获取输入参数
-          # firmware_version="${{ github.event.inputs.firmware_version }}"
-          # firmware_sizes="${{ github.event.inputs.firmware_size }}"
-          # include_docker="${{ github.event.inputs.include_docker }}"
+          chmod +x ${{ github.workspace }}/x86-64/build.sh       
           
           # 它将 firmware_sizes 字符串按逗号分隔，拆分成数组 firmware_size_list
           IFS=',' read -r -a firmware_size_list <<< "$firmware_sizes"
@@ -104,15 +100,15 @@ jobs:
               --user root \
               -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
               -v "${{ github.workspace }}/files:/home/build/immortalwrt/files" \
-              -v "${{ github.workspace }}/x86-64/imm.config:/home/build/immortalwrt/.config" \
-              -v "${{ github.workspace }}/x86-64/24.10/build.sh:/home/build/immortalwrt/build.sh" \
-              -e PARTSIZE=$sys_account \
-              -e PARTSIZE=$sys_pwd \
-              -e PARTSIZE=$lan_ip \
-              -e PARTSIZE=$wifi_name \
-              -e PARTSIZE=$wifi_pwd \
+              -v "${{ github.workspace }}/build.sh:/home/build/immortalwrt/build.sh" \
+              -e SYS_NAME=$sys_account \
+              -e SYS_PWD=$sys_pwd \
+              -e LAN_IP=$lan_ip \
+              -e WIFI_NAME=$wifi_name \
+              -e WIFI_PWD=$wifi_pwd \
+              -e PART_SIZE=$firmware_size \
               -e INCLUDE_DOCKER=$include_docker \
-              immortalwrt/imagebuilder:x86-64-openwrt-24.10.0 /bin/bash /home/build/immortalwrt/build.sh
+              immortalwrt/imagebuilder:$platform_type-openwrt-$firmware_version /bin/bash /home/build/immortalwrt/build.sh
           done
 
       # 生成固件SHA-256校验和
