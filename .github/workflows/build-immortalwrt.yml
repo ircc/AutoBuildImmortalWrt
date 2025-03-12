@@ -77,9 +77,6 @@ jobs:
           # 设置构建脚本的执行权限
           chmod +x ${{ github.workspace }}/x86-64/build.sh     
           
-
-
-
       # 使用Docker构建ImmortalWrt固件
       - name: 2. 构建ImmortalWrt固件
         run: |
@@ -118,12 +115,14 @@ jobs:
               -e INCLUDE_DOCKER=$include_docker \
               immortalwrt/imagebuilder:$platform_type-openwrt-$firmware_version /bin/bash /home/build/immortalwrt/build.sh
           done
-
       # 生成固件SHA-256校验和
       - name: 生成固件SHA-256校验和
         run: |
           # 复制所有固件文件到工作目录
           cp ${{ github.workspace }}/bin/targets/x86/64/*squashfs-combined*.img.gz ${{ github.workspace }}
+          # 复制配置文件到工作目录
+          cp ${{ github.workspace }}/bin/config_old.txt ${{ github.workspace }}/
+          cp ${{ github.workspace }}/bin/config_new.txt ${{ github.workspace }}/
           # 为所有固件文件生成SHA-256校验和
           for file in *squashfs-combined*.img.gz; do
             sha256sum "$file" > "$file.sha256"
@@ -146,6 +145,13 @@ jobs:
             echo "- 包含Docker插件: 否" >> ${{ github.workspace }}/info.md
           fi
           
+          # 添加配置文件信息
+          if [ -f "${{ github.workspace }}/config_old.txt" ] && [ -f "${{ github.workspace }}/config_new.txt" ]; then
+            echo -e "\n### 配置文件" >> ${{ github.workspace }}/info.md
+            echo "- config_old.txt - 原始配置文件" >> ${{ github.workspace }}/info.md
+            echo "- config_new.txt - 修改后配置文件" >> ${{ github.workspace }}/info.md
+          fi
+          
           # 添加固件列表
           echo -e "\n### 固件文件列表" >> ${{ github.workspace }}/info.md
           for file in *squashfs-combined*.img.gz; do
@@ -161,15 +167,23 @@ jobs:
             echo '```' >> ${{ github.workspace }}/info.md
           done
 
+      # 删除已存在的标签
+      - name: 删除已经存在的标签
+        run: |
+          git push --delete origin build-immortalwrt || true
+        continue-on-error: true
+
       # 将构建的固件作为Release发布
       - name: Upload ImmortWrt as release assets
         uses: softprops/action-gh-release@v2.2.1
         with:
-          tag_name: build-immortalwrt-$(date +%Y%m%d)
+          tag_name: build-immortalwrt
           body_path: ${{ github.workspace }}/info.md
           files: |
             ${{ github.workspace }}/*squashfs-combined*.img.gz
             ${{ github.workspace }}/*.sha256
+            ${{ github.workspace }}/config_old.txt
+            ${{ github.workspace }}/config_new.txt
           token: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
