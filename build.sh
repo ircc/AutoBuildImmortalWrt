@@ -50,7 +50,7 @@ EOF
 
 
 # 创建PPPOE配置
-# create_pppoe_settings
+create_pppoe_settings
 
 
 # 输出调试信息
@@ -60,8 +60,6 @@ echo "$(date '+%Y-%m-%d %H:%M:%S') - 开始编译..."
 BASE_PACKAGES="autocore automount base-files block-mount ca-bundle default-settings-chn dnsmasq-full dropbear fdisk firewall4 fstools grub2-bios-setup i915-firmware-dmc kmod-8139cp kmod-8139too kmod-button-hotplug kmod-e1000e kmod-fs-f2fs kmod-i40e kmod-igb kmod-igbvf kmod-igc kmod-ixgbe kmod-ixgbevf kmod-nf-nathelper kmod-nf-nathelper-extra kmod-nft-offload kmod-pcnet32 kmod-r8101 kmod-r8125 kmod-r8126 kmod-r8168 kmod-tulip kmod-usb-hid kmod-usb-net kmod-usb-net-asix kmod-usb-net-asix-ax88179 kmod-usb-net-rtl8150 kmod-usb-net-rtl8152-vendor kmod-vmxnet3 libc libgcc libustream-openssl logd luci-app-package-manager luci-compat luci-lib-base luci-lib-ipkg luci-light mkf2fs mtd netifd nftables odhcp6c odhcpd-ipv6only opkg partx-utils ppp ppp-mod-pppoe procd-ujail uci uclient-fetch urandom-seed urngd kmod-amazon-ena kmod-amd-xgbe kmod-bnx2 kmod-e1000 kmod-dwmac-intel kmod-forcedeth kmod-fs-vfat kmod-tg3 kmod-drm-i915"
 EXTRA_PACKAGES=" curl unzip bash kmod-usb-core kmod-usb2 kmod-usb3 luci-theme-argon luci-i18n-ttyd-zh-cn luci-i18n-opkg-zh-cn luci-i18n-diskman-zh-cn luci-i18n-firewall-zh-cn luci-i18n-filebrowser-zh-cn"
 
-# 合并所有软件包列表
-# PACKAGES="$BASE_PACKAGES $EXTRA_PACKAGES"
 
 # 增加几个必备组件 方便用户安装iStore
 # PACKAGES="$PACKAGES fdisk"
@@ -90,23 +88,18 @@ EXTRA_PACKAGES=" curl unzip bash kmod-usb-core kmod-usb2 kmod-usb3 luci-theme-ar
 #     echo "Adding package: luci-i18n-dockerman-zh-cn"
 # fi
 
+echo "$(date '+%Y-%m-%d %H:%M:%S') - 编译配置："
+cat /home/build/immortalwrt/.config
+echo "BASE_PACKAGES：$BASE_PACKAGES"
+echo "EXTRA_PACKAGES：$EXTRA_PACKAGES"
+
+# 合并所有软件包列表
+PACKAGES="$EXTRA_PACKAGES"
 
 # 构建镜像
 echo "$(date '+%Y-%m-%d %H:%M:%S') - 构建镜像..."
 
-
-# 先清空文件，然后分两次写入软件包列表
-> /tmp/package_list.txt
-echo "$BASE_PACKAGES" >> /tmp/package_list.txt
-echo "$EXTRA_PACKAGES" >> /tmp/package_list.txt
-
-echo "软件包列表已写入 /tmp/package_list.txt"
-cat /tmp/package_list.txt
-
-# 使用文件中的软件包列表进行编译
-make image PROFILE="generic" PACKAGES="$(cat /tmp/package_list.txt | tr '\n' ' ')" FILES="/home/build/immortalwrt/files" ROOTFS_PARTSIZE=$PART_SIZE
-
-# make image PROFILE="generic" PACKAGES="$PACKAGES" FILES="/home/build/immortalwrt/files" ROOTFS_PARTSIZE=$PART_SIZE
+make image PROFILE="generic" PACKAGES="$PACKAGES" FILES="/home/build/immortalwrt/files" ROOTFS_PARTSIZE=$PART_SIZE
 
 # 获取make image编译结果
 BUILD_RESULT=$?
