@@ -122,8 +122,10 @@ jobs:
       # 生成固件SHA-256校验和
       - name: 生成固件SHA-256校验和
         run: |
-          cp ${{ github.workspace }}/bin/targets/x86/64/*squashfs-combined-efi.img.gz ${{ github.workspace }}
-          for file in *squashfs-combined-efi.img.gz; do
+          # 复制所有固件文件到工作目录
+          cp ${{ github.workspace }}/bin/targets/x86/64/*squashfs-combined*.img.gz ${{ github.workspace }}
+          # 为所有固件文件生成SHA-256校验和
+          for file in *squashfs-combined*.img.gz; do
             sha256sum "$file" > "$file.sha256"
             sha256sum -c "$file.sha256"
           done
@@ -144,9 +146,15 @@ jobs:
             echo "- 包含Docker插件: 否" >> ${{ github.workspace }}/info.md
           fi
           
+          # 添加固件列表
+          echo -e "\n### 固件文件列表" >> ${{ github.workspace }}/info.md
+          for file in *squashfs-combined*.img.gz; do
+            echo "- $file" >> ${{ github.workspace }}/info.md
+          done
+          
           # 添加SHA256校验和信息
           echo -e "\n### 固件SHA256校验和" >> ${{ github.workspace }}/info.md
-          for file in *squashfs-combined-efi.img.gz; do
+          for file in *squashfs-combined*.img.gz; do
             echo "#### $file" >> ${{ github.workspace }}/info.md
             echo '```' >> ${{ github.workspace }}/info.md
             cat "$file.sha256" >> ${{ github.workspace }}/info.md
@@ -157,12 +165,11 @@ jobs:
       - name: Upload ImmortWrt as release assets
         uses: softprops/action-gh-release@v2.2.1
         with:
-          tag_name: Autobuild-x86-64
+          tag_name: build-immortalwrt-$(date +%Y%m%d)
           body_path: ${{ github.workspace }}/info.md
           files: |
-            ${{ github.workspace }}/*squashfs-combined-efi.img.gz
+            ${{ github.workspace }}/*squashfs-combined*.img.gz
             ${{ github.workspace }}/*.sha256
           token: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
