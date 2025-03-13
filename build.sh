@@ -3,10 +3,8 @@
 LOGFILE="/tmp/uci-defaults-log.txt"
 echo "Starting 99-custom.sh at $(date)" >> $LOGFILE
 
-echo "编译固件空间大小为: $PART_SIZE MB"
-echo "Include Docker: $INCLUDE_DOCKER"
+echo "编译固件空间（分区）大小为: $PART_SIZE MB"
 echo "系统信息 sys_pwd:$SYS_PWD, lan_ip:$LAN_IP, wifi_name:$WIFI_NAME, wifi_pwd:$WIFI_PWD"
-
 
 # 定义打印固件信息的函数
 print_firmware_info() {
@@ -25,7 +23,7 @@ print_firmware_info() {
       echo "固件: $(basename $firmware), 大小: $firmware_size"
     done < "$firmware_list"
   else
-    echo "没有找到固件文件"
+    echo "没有找到固件文件！！！"
   fi
   
   # 清理临时文件
@@ -130,6 +128,52 @@ process_packages_config() {
   echo "$packages"
 }
 
+# 定义加密压缩固件的函数
+compress_firmware_encrypted() {
+  local password="$1"
+  local output_dir="$2"
+  
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - 开始加密压缩固件..."
+  
+  # 创建输出目录（如果不存在）
+  mkdir -p "$output_dir"
+  
+  # 安装zip工具
+  echo "正在安装zip工具..."
+  apt-get update && apt-get install -y zip
+  
+  # 查找所有固件文件，但排除kernel.bin文件
+  firmware_list=$(mktemp)
+  find /home/build/immortalwrt/bin/targets -name "*squashfs-combined*.img*" > "$firmware_list" 2>/dev/null || true
+  
+  if [ -s "$firmware_list" ]; then
+    # 为每个固件单独创建加密zip包
+    while read -r firmware_path; do
+      # 获取固件文件名（不含路径）
+      firmware_name=$(basename "$firmware_path")
+      # 创建与固件同名的zip文件
+      zip_file="${output_dir}/${firmware_name}.zip"
+      
+      echo "正在压缩文件 $firmware_name 到 $zip_file..."
+      zip -j -P "$password" "$zip_file" "$firmware_path"
+      
+      # 验证zip文件是否创建成功
+      if [ -f "$zip_file" ]; then
+        echo "ZIP文件创建成功: $(ls -lh "$zip_file")"
+      else
+        echo "警告: ZIP文件 $zip_file 创建失败！！！"
+      fi
+    done < "$firmware_list"
+    
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - 所有固件已加密压缩完成！！！"
+  else
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - 没有找到固件文件，跳过压缩！！！"
+  fi
+  
+  # 清理临时文件
+  rm -f "$firmware_list"
+}
+
 # 定义构建镜像的函数
 build_firmware_image() {
   local packages="$1"
@@ -148,13 +192,18 @@ build_firmware_image() {
   
   # 检查make image编译结果
   if [ $build_result -ne 0 ]; then
-      echo "$(date '+%Y-%m-%d %H:%M:%S') - 编译失败!!!"
+      echo "$(date '+%Y-%m-%d %H:%M:%S') - 编译失败！！！"
       return 1
   else
       echo "$(date '+%Y-%m-%d %H:%M:%S') - 编译成功！！！"
       
       # 编译成功后打印固件信息
       print_firmware_info
+      
+      # 加密压缩固件（使用随机密码或固定密码）
+      # local zip_password="${ZIP_PASSWORD:-$(date +%Y%m%d)}"
+      compress_firmware_encrypted "$ZIP_PWD" "/home/build/immortalwrt/bin"
+      
       return 0
   fi
 }
