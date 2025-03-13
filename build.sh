@@ -1,10 +1,49 @@
 #!/bin/bash
-# Log file for debugging
-LOGFILE="/tmp/uci-defaults-log.txt"
-echo "Starting 99-custom.sh at $(date)" >> $LOGFILE
 
-echo "编译固件空间（分区）大小为: $PART_SIZE MB"
-echo "系统信息 sys_pwd:$SYS_PWD, lan_ip:$LAN_IP, wifi_name:$WIFI_NAME, wifi_pwd:$WIFI_PWD"
+# 定义常用路径变量
+BUILD_ROOT="/home/build/immortalwrt"
+FILES_DIR="${BUILD_ROOT}/files"
+CONFIG_DIR="${FILES_DIR}/etc/config"
+UCI_DEFAULTS_DIR="${FILES_DIR}/etc/uci-defaults"
+CUSTOM_SETTINGS="${CONFIG_DIR}/custom-settings"
+
+# 定义创建99-custom.sh使用配置文件的函数
+create_custom_settings() {
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - 创建自定义配置文件..."
+
+  echo "CONFIG_DIR：$CONFIG_DIR"
+  echo "CUSTOM_SETTINGS：$CUSTOM_SETTINGS"
+  # 确保目录存在
+  mkdir -p ${CONFIG_DIR}
+  mkdir -p ${UCI_DEFAULTS_DIR}
+
+  # 创建custom配置文件 yml传入环境变写入配置文件 供99-custom.sh读取
+  cat << EOF > ${CUSTOM_SETTINGS}
+# 自动生成的配置文件 - $(date '+%Y-%m-%d %H:%M:%S')
+sys_pwd=${SYS_PWD:-admin}
+sys_account=${SYS_ACCOUNT:-admin}
+lan_ip=${LAN_IP:-10.0.20.1}
+wifi_name=${WIFI_NAME:-ImmortalWrt}
+wifi_pwd=${WIFI_PWD:-88888888}
+build_auth=${BUILD_AUTH}
+EOF
+  # 判断PPPOE_ENABLE是否为yes，如果是则保存PPPOE账号和密码
+  if [ "${PPPOE_ENABLE}" = "yes" ]; then
+    cat << EOF >> ${CUSTOM_SETTINGS}
+# PPPoE设置
+enable_pppoe=yes
+pppoe_account=${PPPOE_ACCOUNT}
+pppoe_pwd=${PPPOE_PWD}
+EOF
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - 已添加PPPoE配置"
+  fi
+
+  # 设置文件权限
+  chmod 600 ${CUSTOM_SETTINGS}
+  chmod +x ${UCI_DEFAULTS_DIR}/99-custom.sh
+  
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - 自定义配置文件创建完成"
+}
 
 # 定义打印固件信息的函数
 print_firmware_info() {
@@ -208,9 +247,16 @@ build_firmware_image() {
   fi
 }
 
+# 调用创建自定义配置文件的函数
+create_custom_settings
+
 # 定义所需安装的包列表 下列插件你都可以自行删减
 BASE_PACKAGES="autocore automount base-files block-mount ca-bundle default-settings-chn dnsmasq-full dropbear fdisk firewall4 fstools grub2-bios-setup i915-firmware-dmc kmod-8139cp kmod-8139too kmod-button-hotplug kmod-e1000e kmod-fs-f2fs kmod-i40e kmod-igb kmod-igbvf kmod-igc kmod-ixgbe kmod-ixgbevf kmod-nf-nathelper kmod-nf-nathelper-extra kmod-nft-offload kmod-pcnet32 kmod-r8101 kmod-r8125 kmod-r8126 kmod-r8168 kmod-tulip kmod-usb-hid kmod-usb-net kmod-usb-net-asix kmod-usb-net-asix-ax88179 kmod-usb-net-rtl8150 kmod-usb-net-rtl8152-vendor kmod-vmxnet3 libc libgcc libustream-openssl logd luci-app-package-manager luci-compat luci-lib-base luci-lib-ipkg luci-light mkf2fs mtd netifd nftables odhcp6c odhcpd-ipv6only opkg partx-utils ppp ppp-mod-pppoe procd-ujail uci uclient-fetch urandom-seed urngd kmod-amazon-ena kmod-amd-xgbe kmod-bnx2 kmod-e1000 kmod-dwmac-intel kmod-forcedeth kmod-fs-vfat kmod-tg3 kmod-drm-i915"
 EXTRA_PACKAGES=" curl unzip bash kmod-usb-core kmod-usb2 kmod-usb3 luci-theme-argon luci-i18n-ttyd-zh-cn luci-i18n-diskman-zh-cn luci-i18n-firewall-zh-cn luci-i18n-filebrowser-zh-cn"
+
+
+
+echo "编译固件空间（分区）大小为: $PART_SIZE MB"
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') - 开始检查并启用软件包..."
 # 调用函数处理软件包配置并获取PACKAGES变量
@@ -218,7 +264,7 @@ PACKAGES=$(process_packages_config "$BASE_PACKAGES" "$EXTRA_PACKAGES")
 echo "PACKAGES：$PACKAGES"
 
 # 暂不构建，仅测试
-# exit 1
+exit 1
 
 # 调用构建镜像函数
 build_firmware_image "$PACKAGES" "/home/build/immortalwrt/files" "$PART_SIZE"
