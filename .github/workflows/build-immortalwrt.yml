@@ -28,15 +28,14 @@ on:
         description: '请输入要编译固件大小（支持逗号分隔多种大小同时编译）单位(MB)'
         required: true
         default: '4096'
-      include_docker:
-        description: |
-          是否编译 Docker 插件
+      enable_pppoe:
+        description: "是否启用PPPoE拨号"
         required: true
-        default: 'yes'
+        default: 'no'
         type: choice
         options:
-          - 'yes'
-          - 'no'
+        - 'yes'
+        - 'no'
 
 
 # 这定义了一个名为build的作业（工作流）
@@ -54,7 +53,7 @@ jobs:
       platform_type: "${{ github.event.inputs.platform_type }}"
       firmware_version: "${{ github.event.inputs.firmware_version }}"
       firmware_sizes: "${{ github.event.inputs.firmware_size }}"
-      include_docker: "${{ github.event.inputs.include_docker }}"
+      enable_pppoe: "${{ github.event.inputs.enable_pppoe }}"
 
     # 定义作业（工作流）步骤
     steps:
@@ -62,9 +61,8 @@ jobs:
         run: |
           echo "固件版本:${{ github.event.inputs.firmware_version }}"
           echo "固件大小:${{ github.event.inputs.firmware_size }}"
-          echo "是否包括容器插件:${{ github.event.inputs.include_docker }}"
-          echo "固件信息 version:$firmware_version, size:$firmware_sizes, include_docker:$include_docker"
-          echo "系统信息 sys_pwd:$sys_pwd, lan_ip:$lan_ip, wifi_name:$wifi_name, wifi_pwd:$wifi_pwd"
+          echo "是否启用PPPoE拨号:${{ github.event.inputs.enable_pppoe }}"
+          echo "固件信息 version:$firmware_version, size:$firmware_sizes"
 
       - name: 1. 检出代码仓库
         uses: actions/checkout@v4
@@ -86,7 +84,7 @@ jobs:
 
           # 循环构建不同大小的固件
           for firmware_size in "${firmware_size_list[@]}"; do
-            echo "固件信息 version: $firmware_version, size: $firmware_size, include_docker: $include_docker"
+            echo "固件信息 version: $firmware_version, size: $firmware_size"
 
             # 运行Docker容器进行构建
             # --rm ：容器停止后自动删除，避免占用磁盘空间
@@ -99,10 +97,15 @@ jobs:
               -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
               -v "${{ github.workspace }}/files:/home/build/immortalwrt/files" \
               -v "${{ github.workspace }}/build.sh:/home/build/immortalwrt/build.sh" \
+              -e SYS_ACCOUNT=${{ secrets.SYS_ACCOUNT }} \
               -e SYS_PWD=${{ secrets.SYS_PWD }} \
               -e LAN_IP=${{ secrets.LAN_IP }} \
               -e WIFI_NAME=${{ secrets.WIFI_NAME }} \
               -e WIFI_PWD=${{ secrets.WIFI_PWD }} \
+              -e PPPOE_ENABLE=${{ github.event.inputs.enable_pppoe }} \
+              -e PPPOE_ACOUNT=${{ secrets.PPPOE_ACCOUNT }} \
+              -e PPPOE_PWD=${{ secrets.PPPOE_PWD }} \
+              -e BUILD_AUTH=${{ secrets.BUILD_AUTH }} \
               -e PART_SIZE=$firmware_size \
               -e ZIP_PWD=${{ secrets.ZIP_PWD }} \
               immortalwrt/imagebuilder:$platform_type-openwrt-$firmware_version /bin/bash /home/build/immortalwrt/build.sh
@@ -140,14 +143,7 @@ jobs:
           echo "- 平台: ${{ github.event.inputs.platform_type }}" >> ${{ github.workspace }}/info.md
           echo "- 版本: ${{ github.event.inputs.firmware_version }}" >> ${{ github.workspace }}/info.md
           echo "- 固件大小: ${{ github.event.inputs.firmware_size }} MB" >> ${{ github.workspace }}/info.md
-          
-          # 添加Docker信息
-          if [ "${{ github.event.inputs.include_docker }}" == "yes" ]; then
-            echo "- 包含Docker插件: 是" >> ${{ github.workspace }}/info.md
-          else
-            echo "- 包含Docker插件: 否" >> ${{ github.workspace }}/info.md
-          fi
-          
+                    
           # 添加配置文件信息
           if [ -f "${{ github.workspace }}/config_old.txt" ] && [ -f "${{ github.workspace }}/config_new.txt" ]; then
             echo -e "\n### 配置文件" >> ${{ github.workspace }}/info.md
