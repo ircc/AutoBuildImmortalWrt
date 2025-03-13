@@ -71,14 +71,33 @@ jobs:
       - name: 编译前环境准备
         run: |
           # 设置构建脚本的执行权限
-          chmod +x ${{ github.workspace }}/x86-64/build.sh     
+          chmod +x ${{ github.workspace }}/x86-64/build.sh
 
       - name: 2. 构建ImmortalWrt固件
         run: |
           platform_type="${{ github.event.inputs.platform_type }}"
           firmware_version="${{ github.event.inputs.firmware_version }}"
           firmware_sizes="${{ github.event.inputs.firmware_size }}"
-          
+          pppoe_enable="${{ github.event.inputs.enable_pppoe }}"
+
+          # 构建完整的镜像名称
+          image_name="immortalwrt/imagebuilder:${platform_type}-openwrt-${firmware_version}"
+          echo "使用Docker镜像: $image_name"
+
+          # 创建环境变量文件
+          cat > env.list << EOF
+          SYS_ACCOUNT=${{ secrets.SYS_ACCOUNT }}
+          SYS_PWD=${{ secrets.SYS_PWD }}
+          LAN_IP=${{ secrets.LAN_IP }}
+          WIFI_NAME=${{ secrets.WIFI_NAME }}
+          WIFI_PWD=${{ secrets.WIFI_PWD }}
+          PPPOE_ENABLE=${pppoe_enable}
+          PPPOE_ACCOUNT=${{ secrets.PPPOE_ACCOUNT }}
+          PPPOE_PWD=${{ secrets.PPPOE_PWD }}
+          BUILD_AUTH=${{ secrets.BUILD_AUTH }}
+          ZIP_PWD=${{ secrets.ZIP_PWD }}
+          EOF
+
           # 它将 firmware_sizes 字符串按逗号分隔，拆分成数组 firmware_size_list
           IFS=',' read -r -a firmware_size_list <<< "$firmware_sizes"
 
@@ -86,7 +105,7 @@ jobs:
           for firmware_size in "${firmware_size_list[@]}"; do
             echo "固件信息 version: $firmware_version, size: $firmware_size"
 
-            # 运行Docker容器进行构建
+            # 运行Docker容器进行构建 (使用环境变量文件)
             # --rm ：容器停止后自动删除，避免占用磁盘空间
             # -i ：交互模式运行，保持标准输入打开
             # --user root ：以root用户身份在容器内运行命令，确保有足够权限
@@ -97,18 +116,10 @@ jobs:
               -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
               -v "${{ github.workspace }}/files:/home/build/immortalwrt/files" \
               -v "${{ github.workspace }}/build.sh:/home/build/immortalwrt/build.sh" \
-              -e SYS_ACCOUNT=${{ secrets.SYS_ACCOUNT }} \
-              -e SYS_PWD=${{ secrets.SYS_PWD }} \
-              -e LAN_IP=${{ secrets.LAN_IP }} \
-              -e WIFI_NAME=${{ secrets.WIFI_NAME }} \
-              -e WIFI_PWD=${{ secrets.WIFI_PWD }} \
-              -e PPPOE_ENABLE=${{ github.event.inputs.enable_pppoe }} \
-              -e PPPOE_ACOUNT=${{ secrets.PPPOE_ACCOUNT }} \
-              -e PPPOE_PWD=${{ secrets.PPPOE_PWD }} \
-              -e BUILD_AUTH=${{ secrets.BUILD_AUTH }} \
-              -e PART_SIZE=$firmware_size \
-              -e ZIP_PWD=${{ secrets.ZIP_PWD }} \
-              immortalwrt/imagebuilder:$platform_type-openwrt-$firmware_version /bin/bash /home/build/immortalwrt/build.sh
+              --env-file env.list \
+              -e PART_SIZE="${firmware_size}" \
+              "${image_name}" \
+              /bin/bash /home/build/immortalwrt/build.sh
           done
 
       - name: 生成固件SHA-256校验和
@@ -143,14 +154,14 @@ jobs:
           echo "- 平台: ${{ github.event.inputs.platform_type }}" >> ${{ github.workspace }}/info.md
           echo "- 版本: ${{ github.event.inputs.firmware_version }}" >> ${{ github.workspace }}/info.md
           echo "- 固件大小: ${{ github.event.inputs.firmware_size }} MB" >> ${{ github.workspace }}/info.md
-                    
+
           # 添加配置文件信息
           if [ -f "${{ github.workspace }}/config_old.txt" ] && [ -f "${{ github.workspace }}/config_new.txt" ]; then
             echo -e "\n### 配置文件" >> ${{ github.workspace }}/info.md
             echo "- config_old.txt - 原始配置文件" >> ${{ github.workspace }}/info.md
             echo "- config_new.txt - 修改后配置文件" >> ${{ github.workspace }}/info.md
           fi
-          
+
           # 添加加密zip包
           if ls *.zip 1> /dev/null 2>&1; then
             echo -e "\n### 加密固件包" >> ${{ github.workspace }}/info.md
@@ -160,7 +171,7 @@ jobs:
               echo "- $file" >> ${{ github.workspace }}/info.md
             done
           fi
-          
+
           # 添加SHA256校验和信息
           if ls *.zip.sha256 1> /dev/null 2>&1; then
             echo -e "\n### 固件SHA256校验和" >> ${{ github.workspace }}/info.md
