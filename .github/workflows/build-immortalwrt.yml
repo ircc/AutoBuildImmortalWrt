@@ -36,6 +36,10 @@ on:
         options:
         - 'yes'
         - 'no'
+      custom_packages:
+        description: '自定义软件包列表（空格分隔）'
+        required: false
+        default: ''
 
 
 # 这定义了一个名为build的作业（工作流）
@@ -54,6 +58,7 @@ jobs:
       firmware_version: "${{ github.event.inputs.firmware_version }}"
       firmware_sizes: "${{ github.event.inputs.firmware_size }}"
       enable_pppoe: "${{ github.event.inputs.enable_pppoe }}"
+      custom_packages: "${{ github.event.inputs.custom_packages }}"
 
     # 定义作业（工作流）步骤
     steps:
@@ -62,6 +67,7 @@ jobs:
           echo "固件版本:${{ github.event.inputs.firmware_version }}"
           echo "固件大小:${{ github.event.inputs.firmware_size }}"
           echo "是否启用PPPoE拨号:${{ github.event.inputs.enable_pppoe }}"
+          echo "自定义软件包:${{ github.event.inputs.custom_packages }}"
           echo "固件信息 version:$firmware_version, size:$firmware_sizes"
 
       - name: 1. 检出代码仓库
@@ -77,6 +83,7 @@ jobs:
           platform_type="${{ github.event.inputs.platform_type }}"
           firmware_version="${{ github.event.inputs.firmware_version }}"
           pppoe_enable="${{ github.event.inputs.enable_pppoe }}"
+          custom_packages="${{ github.event.inputs.custom_packages }}"
 
           # 构建完整的镜像名称
           # 根据平台类型选择正确的Docker镜像名称
@@ -118,6 +125,7 @@ jobs:
           PLATFORM_TYPE="${{ github.event.inputs.platform_type }}"
           FIRMWARE_VERSION="${{ github.event.inputs.firmware_version }}"
           BUILD_PROFILE="${profile}"
+          CUSTOM_PACKAGES="${{ github.event.inputs.custom_packages }}"
           EOF
 
           echo "环境变量文件创建成功"
@@ -182,6 +190,7 @@ jobs:
             source "${{ github.workspace }}/packages_info.txt"
             echo "BASE_PACKAGES=$BASE_PACKAGES" >> $GITHUB_ENV
             echo "EXTRA_PACKAGES=$EXTRA_PACKAGES" >> $GITHUB_ENV
+            echo "CUSTOM_PACKAGES=$CUSTOM_PACKAGES" >> $GITHUB_ENV
             echo "PACKAGES=$PACKAGES" >> $GITHUB_ENV
           fi
 
@@ -225,6 +234,11 @@ jobs:
             #### 额外软件包
             ```
             ${{ env.EXTRA_PACKAGES }}
+            ```
+            
+            #### 自定义软件包
+            ```
+            ${{ env.CUSTOM_PACKAGES }}
             ```
             
             #### 需要安装的软件包
