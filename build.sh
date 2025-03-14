@@ -247,24 +247,116 @@ build_firmware_image() {
   fi
 }
 
-# 调用创建自定义配置文件的函数
-create_custom_settings
+# 定义全局变量
+PACKAGES=""
+BASE_PACKAGES=""
+EXTRA_PACKAGES=""
 
-# 定义所需安装的包列表 下列插件你都可以自行删减
-BASE_PACKAGES="autocore automount base-files block-mount ca-bundle default-settings-chn dnsmasq-full dropbear fdisk firewall4 fstools grub2-bios-setup i915-firmware-dmc kmod-8139cp kmod-8139too kmod-button-hotplug kmod-e1000e kmod-fs-f2fs kmod-i40e kmod-igb kmod-igbvf kmod-igc kmod-ixgbe kmod-ixgbevf kmod-nf-nathelper kmod-nf-nathelper-extra kmod-nft-offload kmod-pcnet32 kmod-r8101 kmod-r8125 kmod-r8126 kmod-r8168 kmod-tulip kmod-usb-hid kmod-usb-net kmod-usb-net-asix kmod-usb-net-asix-ax88179 kmod-usb-net-rtl8150 kmod-usb-net-rtl8152-vendor kmod-vmxnet3 libc libgcc libustream-openssl logd luci-app-package-manager luci-compat luci-lib-base luci-lib-ipkg luci-light mkf2fs mtd netifd nftables odhcp6c odhcpd-ipv6only opkg partx-utils ppp ppp-mod-pppoe procd-ujail uci uclient-fetch urandom-seed urngd kmod-amazon-ena kmod-amd-xgbe kmod-bnx2 kmod-e1000 kmod-dwmac-intel kmod-forcedeth kmod-fs-vfat kmod-tg3 kmod-drm-i915"
-EXTRA_PACKAGES=" curl unzip bash kmod-usb-core kmod-usb2 kmod-usb3 luci-theme-argon luci-i18n-ttyd-zh-cn luci-i18n-diskman-zh-cn luci-i18n-firewall-zh-cn luci-i18n-filebrowser-zh-cn"
+# 定义从配置文件读取包列表的函数
+load_packages_from_config() {
+  local platform_type="$1"
+  local firmware_version="$2"
+  local config_file="/home/build/immortalwrt/src/build-config.json"
+  
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - 从配置文件加载软件包列表..."
+  echo "平台类型: $platform_type, 固件版本: $firmware_version"
+  
+  # 检查配置文件是否存在
+  if [ ! -f "$config_file" ]; then
+    echo "错误: 配置文件 $config_file 不存在!"
+    return 1
+  fi
+  
+  # 去除引号，避免JSON解析问题
+  platform_type=$(echo "$platform_type" | tr -d '"')
+  firmware_version=$(echo "$firmware_version" | tr -d '"')
+  
+  echo "处理后的平台类型: $platform_type, 固件版本: $firmware_version"
+  
+  # 安装jq工具（如果需要）
+  if ! command -v jq &> /dev/null; then
+    echo "正在安装jq工具..."
+    apt-get update && apt-get install -y jq
+  fi
+  
+  # 从配置文件中读取base_packages
+  local base_packages_value=$(jq -r --arg platform "$platform_type" --arg version "$firmware_version" '.[$platform][$version].base_packages' "$config_file")
+  
+  # 从配置文件中读取extra_packages
+  local extra_packages_value=$(jq -r --arg platform "$platform_type" --arg version "$firmware_version" '.[$platform][$version].extra_packages' "$config_file")
+  
+  # 检查是否成功读取并设置全局变量
+  if [ "$base_packages_value" = "null" ] || [ "$base_packages_value" = "" ]; then
+    echo "警告: 未找到平台 $platform_type 版本 $firmware_version 的 base_packages 配置，使用默认值"
+    BASE_PACKAGES=""
+  else
+    echo "成功加载 base_packages 配置"
+    # 设置全局变量
+    BASE_PACKAGES="$base_packages_value"
+  fi
+  
+  if [ "$extra_packages_value" = "null" ] || [ "$extra_packages_value" = "" ]; then
+    echo "警告: 未找到平台 $platform_type 版本 $firmware_version 的 extra_packages 配置，使用默认值"
+    EXTRA_PACKAGES=""
+  else
+    echo "成功加载 extra_packages 配置"
+    # 设置全局变量
+    EXTRA_PACKAGES="$extra_packages_value"
+  fi
+  
+  echo "BASE_PACKAGES: $BASE_PACKAGES"
+  echo "EXTRA_PACKAGES: $EXTRA_PACKAGES"
+  
+  return 0
+}
+
+# 定义打印环境变量的函数
+print_environment_variables() {
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - 环境变量传入参数:"
+  echo "SYS_ACCOUNT: ${SYS_ACCOUNT:-未设置}"
+  echo "SYS_PWD: ${SYS_PWD:-未设置}"
+  echo "LAN_IP: ${LAN_IP:-未设置}"
+  echo "WIFI_NAME: ${WIFI_NAME:-未设置}"
+  echo "WIFI_PWD: ${WIFI_PWD:-未设置}"
+  echo "BUILD_AUTH: ${BUILD_AUTH:-未设置}"
+  echo "PPPOE_ENABLE: ${PPPOE_ENABLE:-未设置}"
+  echo "PPPOE_ACCOUNT: ${PPPOE_ACCOUNT:-未设置}"
+  echo "PPPOE_PWD: ${PPPOE_PWD:-未设置}"
+  echo "PART_SIZE: ${PART_SIZE:-未设置}"
+  echo "ZIP_PWD: ${ZIP_PWD:-未设置}"
+  echo "PLATFORM_TYPE: ${PLATFORM_TYPE:-未设置}"
+  echo "FIRMWARE_VERSION: ${FIRMWARE_VERSION:-未设置}"
+
+}
+
+# 定义初始化配置的函数
+initialize_build_config() {
+  # 调用打印环境变量函数
+  print_environment_variables
+
+  # 从环境变量获取平台类型和固件版本
+  PLATFORM_TYPE="${PLATFORM_TYPE:-x86-64}"
+  FIRMWARE_VERSION="${FIRMWARE_VERSION:-24.10.0}"
+
+  # 从配置文件加载软件包列表到全局变量
+  load_packages_from_config "$PLATFORM_TYPE" "$FIRMWARE_VERSION"
+
+  # 调用创建自定义配置文件的函数
+  create_custom_settings
+
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - 开始检查并启用软件包..."
+  # 调用函数处理软件包配置并获取PACKAGES变量
+  PACKAGES=$(process_packages_config "$BASE_PACKAGES" "$EXTRA_PACKAGES")
+  echo "需要安装的PACKAGES包列表：$PACKAGES"
+}
 
 
-
-echo "编译固件空间（分区）大小为: $PART_SIZE MB"
-
-echo "$(date '+%Y-%m-%d %H:%M:%S') - 开始检查并启用软件包..."
-# 调用函数处理软件包配置并获取PACKAGES变量
-PACKAGES=$(process_packages_config "$BASE_PACKAGES" "$EXTRA_PACKAGES")
-echo "PACKAGES：$PACKAGES"
+##################################################################################################################################
+# 调用初始化配置函数
+initialize_build_config
 
 # 暂不构建，仅测试
-exit 1
+# exit 1
 
 # 调用构建镜像函数
 build_firmware_image "$PACKAGES" "/home/build/immortalwrt/files" "$PART_SIZE"
