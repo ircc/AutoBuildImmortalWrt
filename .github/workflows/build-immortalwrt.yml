@@ -71,7 +71,7 @@ jobs:
       - name: 编译前环境准备
         run: |
           # 设置构建脚本的执行权限
-          chmod +x ${{ github.workspace }}/x86-64/build.sh
+          chmod +x ${{ github.workspace }}/src/build.sh
 
           #准备环境变量文件
           platform_type="${{ github.event.inputs.platform_type }}"
@@ -86,6 +86,8 @@ jobs:
 
           # 创建bin目录（如果不存在）
           mkdir -p "${{ github.workspace }}/bin"
+          # 创建src目录（如果不存在）
+          mkdir -p "${{ github.workspace }}/src"
 
           # 创建环境变量文件
           cat > env.list << 'EOF'
@@ -126,12 +128,11 @@ jobs:
               --user root \
               -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
               -v "${{ github.workspace }}/files:/home/build/immortalwrt/files" \
-              -v "${{ github.workspace }}/build.sh:/home/build/immortalwrt/build.sh" \
               -v "${{ github.workspace }}/src:/home/build/immortalwrt/src" \
               --env-file env.list \
               -e PART_SIZE="${firmware_size}" \
               "${IMAGE_NAME}" \
-              /bin/bash /home/build/immortalwrt/build.sh
+              /bin/bash /home/build/immortalwrt/src/build.sh
           done
 
       - name: 生成固件SHA-256校验和
