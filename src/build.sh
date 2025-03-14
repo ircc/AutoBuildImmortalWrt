@@ -135,6 +135,7 @@ enable_packages_in_config() {
 process_packages_config() {
   local base_packages="$1"
   local extra_packages="$2"
+  local custom_packages="$3"
   
   # 复制配置文件到bin目录，以便与固件一起发布
   cp /home/build/immortalwrt/.config /home/build/immortalwrt/bin/config_old.txt >&2
@@ -147,8 +148,13 @@ process_packages_config() {
   # 调用函数检查并启用EXTRA_PACKAGES中的软件包，并获取不存在的包
   local extra_not_found=$(enable_packages_in_config "$extra_packages")
   
+  echo "检查并启用软件包列表：CUSTOM_PACKAGES" >&2
+  # 调用函数检查并启用CUSTOM_PACKAGES中的软件包，并获取不存在的包
+  local custom_not_found=$(enable_packages_in_config "$custom_packages")
+  
   echo "BASE_NOT_FOUND：$base_not_found" >&2
   echo "EXTRA_NOT_FOUND：$extra_not_found" >&2
+  echo "CUSTOM_NOT_FOUND：$custom_not_found" >&2
   
   # 复制配置文件到bin目录，以便与固件一起发布
   cp /home/build/immortalwrt/.config /home/build/immortalwrt/bin/config_new.txt >&2
@@ -158,15 +164,17 @@ process_packages_config() {
   # 清理变量中可能存在的前导和尾随空格
   base_not_found=$(echo "$base_not_found" | xargs)
   extra_not_found=$(echo "$extra_not_found" | xargs)
+  custom_not_found=$(echo "$custom_not_found" | xargs)
 
   # 确保PACKAGES变量格式正确
-  local packages="$base_not_found $extra_not_found"
+  local packages="$base_not_found $extra_not_found $custom_not_found"
   packages=$(echo "$packages" | tr -s ' ' | sed 's/^ //;s/ $//')
   
   # 将包信息保存到文件，供GitHub Actions使用
   mkdir -p "/home/build/immortalwrt/bin"
   echo "BASE_PACKAGES=\"$base_packages\"" > /home/build/immortalwrt/bin/packages_info.txt
   echo "EXTRA_PACKAGES=\"$extra_packages\"" >> /home/build/immortalwrt/bin/packages_info.txt
+  echo "CUSTOM_PACKAGES=\"$custom_packages\"" >> /home/build/immortalwrt/bin/packages_info.txt
   echo "PACKAGES=\"$packages\"" >> /home/build/immortalwrt/bin/packages_info.txt
   
   # 返回处理后的PACKAGES变量（这是函数的唯一输出）
@@ -340,6 +348,7 @@ print_environment_variables() {
   # echo "PPPOE_ACCOUNT: ${PPPOE_ACCOUNT:-未设置}"
   # echo "PPPOE_PWD: ${PPPOE_PWD:-未设置}"
   # echo "ZIP_PWD: ${ZIP_PWD:-未设置}"
+  echo "CUSTOM_PACKAGES: ${CUSTOM_PACKAGES:-未设置}"
 }
 
 # 定义初始化配置的函数
@@ -350,6 +359,7 @@ initialize_build_config() {
   # 从环境变量获取平台类型和固件版本
   PLATFORM_TYPE="${PLATFORM_TYPE:-x86-64}"
   FIRMWARE_VERSION="${FIRMWARE_VERSION:-24.10.0}"
+  CUSTOM_PACKAGES="${CUSTOM_PACKAGES:-}"
 
   # 从配置文件加载软件包列表到全局变量
   load_packages_from_config "$PLATFORM_TYPE" "$FIRMWARE_VERSION"
@@ -359,7 +369,7 @@ initialize_build_config() {
 
   echo "$(date '+%Y-%m-%d %H:%M:%S') - 开始检查并启用软件包..."
   # 调用函数处理软件包配置并获取PACKAGES变量
-  PACKAGES=$(process_packages_config "$BASE_PACKAGES" "$EXTRA_PACKAGES")
+  PACKAGES=$(process_packages_config "$BASE_PACKAGES" "$EXTRA_PACKAGES" "$CUSTOM_PACKAGES")
   echo "需要安装的PACKAGES包列表：$PACKAGES"
 }
 
