@@ -188,14 +188,24 @@ jobs:
       # 删除已存在的标签
       - name: 删除已经存在的标签
         run: |
-          git push --delete origin build-immortalwrt || true
+          git push --delete origin build-immortalwrt-${{ github.event.inputs.platform_type }}-${{ github.event.inputs.firmware_version }} || true
         continue-on-error: true
+        
+      # 清理之前发布的资产文件
+      - name: 清理之前的发布资产
+        uses: dev-drprasad/delete-tag-and-release@v0.2.1
+        with:
+          tag_name: ImmortalWrt-${{ github.event.inputs.platform_type }}-${{ github.event.inputs.firmware_version }}
+          delete_release: true
+          repo: ${{ github.repository }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # 修改发布步骤，使用环境变量中的固件信息
       - name: 将构建的固件作为Release发布
         uses: softprops/action-gh-release@v2.2.1
         with:
-          tag_name: build-immortalwrt
+          tag_name: ImmortalWrt-${{ github.event.inputs.platform_type }}-${{ github.event.inputs.firmware_version }}
           body: |
             ### ImmortalWrt 固件信息
             - 平台: ${{ github.event.inputs.platform_type }}
