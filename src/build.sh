@@ -356,7 +356,7 @@ initialize_build_config() {
 initialize_build_config
 
 # 暂不构建，仅测试
-# exit 1
+exit 1
 
 # 调用构建镜像函数
 build_firmware_image "$PACKAGES" "/home/build/immortalwrt/files" "$PART_SIZE"
