@@ -1,8 +1,8 @@
 # 定义工作流的名称
 name: build-immortalwrt
 
-# 自定义工作流运行的显示名称，模板变量 ${{ github.actor }} 会动态替换为触发工作流的 GitHub 用户名
-run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
+# 自定义工作流运行的显示名称，根据输入参数动态生成
+run-name: 构建 ImmortalWrt ${{ github.event.inputs.platform_type }} ${{ github.event.inputs.firmware_version }} 固件 (大小:${{ github.event.inputs.firmware_size }}MB)
 # 定义工作流触发条件：手动触发（workflow_dispatch）
 on:
   workflow_dispatch:
