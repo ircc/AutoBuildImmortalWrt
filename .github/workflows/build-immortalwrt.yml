@@ -79,7 +79,21 @@ jobs:
           pppoe_enable="${{ github.event.inputs.enable_pppoe }}"
 
           # 构建完整的镜像名称
-          image_name="immortalwrt/imagebuilder:${platform_type}-openwrt-${firmware_version}"
+          # 根据平台类型选择正确的Docker镜像名称
+          if [ "$platform_type" = "Raspberry-Pi-4B" ]; then
+            # 树莓派4B使用bcm27xx-bcm2711作为镜像名称
+            image_name="immortalwrt/imagebuilder:bcm27xx-bcm2711-openwrt-${firmware_version}"
+            # 树莓派4B特定的构建配置
+            profile="rpi-4"
+            echo "使用树莓派4B配置文件: $profile"
+          else
+            # x86-64保持不变
+            image_name="immortalwrt/imagebuilder:${platform_type}-openwrt-${firmware_version}"
+            # x86-64默认配置
+            profile="generic"
+            echo "使用x86-64配置文件: $profile"
+          fi
+          
           echo "使用Docker镜像: $image_name"
           # 将镜像名称保存为环境变量，供后续步骤使用
           echo "IMAGE_NAME=$image_name" >> $GITHUB_ENV
@@ -90,7 +104,7 @@ jobs:
           mkdir -p "${{ github.workspace }}/src"
 
           # 创建环境变量文件
-          cat > env.list << 'EOF'
+          cat > env.list << EOF
           SYS_ACCOUNT=${{ secrets.SYS_ACCOUNT }}
           SYS_PWD=${{ secrets.SYS_PWD }}
           LAN_IP=${{ secrets.LAN_IP }}
@@ -103,6 +117,7 @@ jobs:
           ZIP_PWD=${{ secrets.ZIP_PWD }}
           PLATFORM_TYPE="${{ github.event.inputs.platform_type }}"
           FIRMWARE_VERSION="${{ github.event.inputs.firmware_version }}"
+          BUILD_PROFILE="${profile}"
           EOF
 
           echo "环境变量文件创建成功"
@@ -110,13 +125,14 @@ jobs:
       - name: 2. 构建ImmortalWrt固件
         run: |
           firmware_sizes="${{ github.event.inputs.firmware_size }}"
+          platform_type="${{ github.event.inputs.platform_type }}"
           
           # 它将 firmware_sizes 字符串按逗号分隔，拆分成数组 firmware_size_list
           IFS=',' read -r -a firmware_size_list <<< "$firmware_sizes"
 
           # 循环构建不同大小的固件
           for firmware_size in "${firmware_size_list[@]}"; do
-            echo "固件信息 version: ${{ github.event.inputs.firmware_version }}, size: $firmware_size"
+            echo "固件信息 platform: $platform_type, version: ${{ github.event.inputs.firmware_version }}, size: $firmware_size"
 
             # 运行Docker容器进行构建 (使用环境变量文件)
             # --rm ：容器停止后自动删除，避免占用磁盘空间

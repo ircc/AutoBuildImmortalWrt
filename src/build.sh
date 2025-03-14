@@ -187,9 +187,12 @@ compress_firmware_encrypted() {
   echo "正在安装zip工具..."
   apt-get update && apt-get install -y zip
   
-  # 查找所有固件文件，但排除kernel.bin文件
+  # 查找所有固件文件
   firmware_list=$(mktemp)
-  find /home/build/immortalwrt/bin/targets -name "*squashfs-combined*.img*" > "$firmware_list" 2>/dev/null || true
+  
+  # 使用通用通配符查找所有可能的固件文件
+  # 查找所有 .img 和 .img.gz 文件，这应该能覆盖大多数平台的固件格式
+  find /home/build/immortalwrt/bin/targets -name "*.img" -o -name "*.img.gz" > "$firmware_list" 2>/dev/null || true
   
   if [ -s "$firmware_list" ]; then
     # 为每个固件单独创建加密zip包
@@ -205,12 +208,16 @@ compress_firmware_encrypted() {
       # 验证zip文件是否创建成功
       if [ -f "$zip_file" ]; then
         echo "ZIP文件创建成功: $(ls -lh "$zip_file")"
+        
+        # 压缩成功后删除源固件文件
+        echo "删除源固件文件: $firmware_path"
+        rm -f "$firmware_path"
       else
         echo "警告: ZIP文件 $zip_file 创建失败！！！"
       fi
     done < "$firmware_list"
     
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - 所有固件已加密压缩完成！！！"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - 所有固件已加密压缩完成并删除源文件！！！"
   else
     echo "$(date '+%Y-%m-%d %H:%M:%S') - 没有找到固件文件，跳过压缩！！！"
   fi
@@ -226,8 +233,11 @@ build_firmware_image() {
   local rootfs_size="$3"
   local profile="${4:-generic}"
   
+  # 去除配置文件名称中可能存在的引号
+  profile=$(echo "$profile" | tr -d '"')
+  
   # 构建镜像
-  echo "$(date '+%Y-%m-%d %H:%M:%S') - 构建镜像..."
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - 构建镜像:$profile..."
   make image PROFILE="$profile" PACKAGES="$packages" FILES="$files_dir" ROOTFS_PARTSIZE="$rootfs_size"
   
   # 获取make image编译结果
@@ -246,7 +256,6 @@ build_firmware_image() {
       print_firmware_info
       
       # 加密压缩固件（使用随机密码或固定密码）
-      # local zip_password="${ZIP_PASSWORD:-$(date +%Y%m%d)}"
       compress_firmware_encrypted "$ZIP_PWD" "/home/build/immortalwrt/bin"
       
       return 0
@@ -265,7 +274,6 @@ load_packages_from_config() {
   local config_file="/home/build/immortalwrt/src/build-config.json"
   
   echo "$(date '+%Y-%m-%d %H:%M:%S') - 从配置文件加载软件包列表..."
-  echo "平台类型: $platform_type, 固件版本: $firmware_version"
   
   # 检查配置文件是否存在
   if [ ! -f "$config_file" ]; then
@@ -275,9 +283,8 @@ load_packages_from_config() {
   
   # 去除引号，避免JSON解析问题
   platform_type=$(echo "$platform_type" | tr -d '"')
-  firmware_version=$(echo "$firmware_version" | tr -d '"')
-  
-  echo "处理后的平台类型: $platform_type, 固件版本: $firmware_version"
+  firmware_version=$(echo "$firmware_version" | tr -d '"')  
+  echo "平台类型: $platform_type, 固件版本: $firmware_version"
   
   # 安装jq工具（如果需要）
   if ! command -v jq &> /dev/null; then
@@ -319,20 +326,20 @@ load_packages_from_config() {
 # 定义打印环境变量的函数
 print_environment_variables() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') - 环境变量传入参数:"
-  echo "SYS_ACCOUNT: ${SYS_ACCOUNT:-未设置}"
-  echo "SYS_PWD: ${SYS_PWD:-未设置}"
-  echo "LAN_IP: ${LAN_IP:-未设置}"
-  echo "WIFI_NAME: ${WIFI_NAME:-未设置}"
-  echo "WIFI_PWD: ${WIFI_PWD:-未设置}"
-  echo "BUILD_AUTH: ${BUILD_AUTH:-未设置}"
-  echo "PPPOE_ENABLE: ${PPPOE_ENABLE:-未设置}"
-  echo "PPPOE_ACCOUNT: ${PPPOE_ACCOUNT:-未设置}"
-  echo "PPPOE_PWD: ${PPPOE_PWD:-未设置}"
+  echo "PROFILE: ${BUILD_PROFILE:-未设置}"
   echo "PART_SIZE: ${PART_SIZE:-未设置}"
-  echo "ZIP_PWD: ${ZIP_PWD:-未设置}"
   echo "PLATFORM_TYPE: ${PLATFORM_TYPE:-未设置}"
   echo "FIRMWARE_VERSION: ${FIRMWARE_VERSION:-未设置}"
-
+  # echo "SYS_ACCOUNT: ${SYS_ACCOUNT:-未设置}"
+  # echo "SYS_PWD: ${SYS_PWD:-未设置}"
+  # echo "LAN_IP: ${LAN_IP:-未设置}"
+  # echo "WIFI_NAME: ${WIFI_NAME:-未设置}"
+  # echo "WIFI_PWD: ${WIFI_PWD:-未设置}"
+  # echo "BUILD_AUTH: ${BUILD_AUTH:-未设置}"
+  echo "PPPOE_ENABLE: ${PPPOE_ENABLE:-未设置}"
+  # echo "PPPOE_ACCOUNT: ${PPPOE_ACCOUNT:-未设置}"
+  # echo "PPPOE_PWD: ${PPPOE_PWD:-未设置}"
+  # echo "ZIP_PWD: ${ZIP_PWD:-未设置}"
 }
 
 # 定义初始化配置的函数
@@ -365,7 +372,7 @@ initialize_build_config
 # exit 1
 
 # 调用构建镜像函数
-build_firmware_image "$PACKAGES" "/home/build/immortalwrt/files" "$PART_SIZE"
+build_firmware_image "$PACKAGES" "/home/build/immortalwrt/files" "$PART_SIZE" "${BUILD_PROFILE:-generic}"
 
 # 获取构建结果并决定是否退出
 if [ $? -ne 0 ]; then
