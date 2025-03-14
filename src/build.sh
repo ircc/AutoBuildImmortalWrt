@@ -211,7 +211,8 @@ compress_firmware_encrypted() {
       zip_file="${output_dir}/${firmware_name}.zip"
       
       echo "正在压缩文件 $firmware_name 到 $zip_file..."
-      zip -j -P "$password" "$zip_file" "$firmware_path"
+      # 使用-e选项启用加密并隐藏文件名
+      zip -j -e -P "$password" "$zip_file" "$firmware_path"
       
       # 验证zip文件是否创建成功
       if [ -f "$zip_file" ]; then
