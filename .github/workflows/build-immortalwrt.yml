@@ -146,6 +146,8 @@ jobs:
           # 复制配置文件到工作目录
           cp ${{ github.workspace }}/bin/config_old.txt ${{ github.workspace }}/
           cp ${{ github.workspace }}/bin/config_new.txt ${{ github.workspace }}/
+          # 复制包信息文件到工作目录
+          cp ${{ github.workspace }}/bin/packages_info.txt ${{ github.workspace }}/ || true
           
           # 显示当前目录内容，用于调试
           echo "当前工作目录内容:"
@@ -158,44 +160,13 @@ jobs:
               sha256sum -c "$file.sha256"
             fi
           done
-
-      # 创建固件信息文件
-      - name: 生成固件信息文件
-        run: |
-          # 创建基本信息文件
-          echo "### ImmortalWrt 固件信息" > ${{ github.workspace }}/info.md
-          echo "- 平台: ${{ github.event.inputs.platform_type }}" >> ${{ github.workspace }}/info.md
-          echo "- 版本: ${{ github.event.inputs.firmware_version }}" >> ${{ github.workspace }}/info.md
-          echo "- 固件大小: ${{ github.event.inputs.firmware_size }} MB" >> ${{ github.workspace }}/info.md
-
-          # 添加配置文件信息
-          if [ -f "${{ github.workspace }}/config_old.txt" ] && [ -f "${{ github.workspace }}/config_new.txt" ]; then
-            echo -e "\n### 配置文件" >> ${{ github.workspace }}/info.md
-            echo "- config_old.txt - 原始配置文件" >> ${{ github.workspace }}/info.md
-            echo "- config_new.txt - 修改后配置文件" >> ${{ github.workspace }}/info.md
-          fi
-
-          # 添加加密zip包
-          if ls *.zip 1> /dev/null 2>&1; then
-            echo -e "\n### 加密固件包" >> ${{ github.workspace }}/info.md
-            echo "- 加密方式: ZIP加密" >> ${{ github.workspace }}/info.md
-            echo "- 密码: 请联系管理员获取" >> ${{ github.workspace }}/info.md
-            for file in *.zip; do
-              echo "- $file" >> ${{ github.workspace }}/info.md
-            done
-          fi
-
-          # 添加SHA256校验和信息
-          if ls *.zip.sha256 1> /dev/null 2>&1; then
-            echo -e "\n### 固件SHA256校验和" >> ${{ github.workspace }}/info.md
-            for file in *.zip; do
-              if [ -f "$file.sha256" ]; then
-                echo "#### $file" >> ${{ github.workspace }}/info.md
-                echo '```' >> ${{ github.workspace }}/info.md
-                cat "$file.sha256" >> ${{ github.workspace }}/info.md
-                echo '```' >> ${{ github.workspace }}/info.md
-              fi
-            done
+          
+          # 读取包信息文件（如果存在）
+          if [ -f "${{ github.workspace }}/packages_info.txt" ]; then
+            source "${{ github.workspace }}/packages_info.txt"
+            echo "BASE_PACKAGES=$BASE_PACKAGES" >> $GITHUB_ENV
+            echo "EXTRA_PACKAGES=$EXTRA_PACKAGES" >> $GITHUB_ENV
+            echo "PACKAGES=$PACKAGES" >> $GITHUB_ENV
           fi
 
       # 删除已存在的标签
@@ -204,20 +175,49 @@ jobs:
           git push --delete origin build-immortalwrt || true
         continue-on-error: true
 
-      # enerate_release_notes: false - 禁止自动生成发布说明
-      # draft: false - 直接发布而不是创建草稿
-      # prerelease: false - 不标记为预发布
-      # make_latest: true - 将此发布标记为最新版本
+      # 修改发布步骤，使用环境变量中的固件信息
       - name: 将构建的固件作为Release发布
         uses: softprops/action-gh-release@v2.2.1
         with:
           tag_name: build-immortalwrt
-          body_path: ${{ github.workspace }}/info.md
+          body: |
+            ### ImmortalWrt 固件信息
+            - 平台: ${{ github.event.inputs.platform_type }}
+            - 版本: ${{ github.event.inputs.firmware_version }}
+            - 固件大小: ${{ github.event.inputs.firmware_size }} MB
+            
+            ### 配置文件
+            - config_old.txt - 原始配置文件
+            - config_new.txt - 修改后配置文件
+            
+            ### 软件包信息
+            #### 基础软件包
+            ```
+            ${{ env.BASE_PACKAGES }}
+            ```
+            
+            #### 额外软件包
+            ```
+            ${{ env.EXTRA_PACKAGES }}
+            ```
+            
+            #### 需要安装的软件包
+            ```
+            ${{ env.PACKAGES }}
+            ```
+            
+            ### 加密固件包
+            - 加密方式: ZIP加密
+            - 密码: 请联系管理员获取
+            
+            ### 固件SHA256校验和
+            请查看附件中的 .sha256 文件
           files: |
             ${{ github.workspace }}/*.zip
             ${{ github.workspace }}/*.sha256
             ${{ github.workspace }}/config_old.txt
             ${{ github.workspace }}/config_new.txt
+            ${{ github.workspace }}/packages_info.txt
           token: ${{ secrets.GITHUB_TOKEN }}
           generate_release_notes: false
           draft: false

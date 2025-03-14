@@ -163,6 +163,12 @@ process_packages_config() {
   local packages="$base_not_found $extra_not_found"
   packages=$(echo "$packages" | tr -s ' ' | sed 's/^ //;s/ $//')
   
+  # 将包信息保存到文件，供GitHub Actions使用
+  mkdir -p "/home/build/immortalwrt/bin"
+  echo "BASE_PACKAGES=\"$base_packages\"" > /home/build/immortalwrt/bin/packages_info.txt
+  echo "EXTRA_PACKAGES=\"$extra_packages\"" >> /home/build/immortalwrt/bin/packages_info.txt
+  echo "PACKAGES=\"$packages\"" >> /home/build/immortalwrt/bin/packages_info.txt
+  
   # 返回处理后的PACKAGES变量（这是函数的唯一输出）
   echo "$packages"
 }
@@ -356,7 +362,7 @@ initialize_build_config() {
 initialize_build_config
 
 # 暂不构建，仅测试
-exit 1
+# exit 1
 
 # 调用构建镜像函数
 build_firmware_image "$PACKAGES" "/home/build/immortalwrt/files" "$PART_SIZE"
