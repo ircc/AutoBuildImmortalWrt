@@ -185,9 +185,14 @@ jobs:
             fi
           done
           
-          # 读取包信息文件（如果存在）
+          # 读取包信息文件（如果存在）- 修改为更安全的方式
           if [ -f "${{ github.workspace }}/packages_info.txt" ]; then
-            source "${{ github.workspace }}/packages_info.txt"
+            # 使用grep提取变量值而不是source命令
+            BASE_PACKAGES=$(grep "^BASE_PACKAGES=" "${{ github.workspace }}/packages_info.txt" | cut -d'=' -f2-)
+            EXTRA_PACKAGES=$(grep "^EXTRA_PACKAGES=" "${{ github.workspace }}/packages_info.txt" | cut -d'=' -f2-)
+            CUSTOM_PACKAGES=$(grep "^CUSTOM_PACKAGES=" "${{ github.workspace }}/packages_info.txt" | cut -d'=' -f2-)
+            PACKAGES=$(grep "^PACKAGES=" "${{ github.workspace }}/packages_info.txt" | cut -d'=' -f2-)
+            
             echo "BASE_PACKAGES=$BASE_PACKAGES" >> $GITHUB_ENV
             echo "EXTRA_PACKAGES=$EXTRA_PACKAGES" >> $GITHUB_ENV
             echo "CUSTOM_PACKAGES=$CUSTOM_PACKAGES" >> $GITHUB_ENV

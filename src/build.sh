@@ -48,13 +48,15 @@ EOF
 # 定义打印固件信息的函数
 print_firmware_info() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') - 详细固件列表:"
-  ls -lh /home/build/immortalwrt/bin/targets/*/*/*squashfs-combined*.img* /home/build/immortalwrt/bin/targets/*/*/*.bin 2>/dev/null || echo "没有找到固件文件"
-
+  # 使用更广泛的模式查找固件文件
+  find /home/build/immortalwrt/bin/targets -type f -name "*.img*" -o -name "*.bin" -o -name "*.gz" 2>/dev/null | sort
+  
   # 打印固件大小
   echo "$(date '+%Y-%m-%d %H:%M:%S') - 固件信息:"
   # 使用临时文件存储find结果，避免管道问题
   firmware_list=$(mktemp)
-  find /home/build/immortalwrt/bin/targets -name "*squashfs-combined*.img*" -o -name "*.bin" > "$firmware_list" 2>/dev/null || true
+  # 使用更广泛的模式查找固件文件
+  find /home/build/immortalwrt/bin/targets -type f -name "*.img*" -o -name "*.bin" -o -name "*.gz" > "$firmware_list" 2>/dev/null || true
   
   if [ -s "$firmware_list" ]; then
     while read -r firmware; do
@@ -63,6 +65,9 @@ print_firmware_info() {
     done < "$firmware_list"
   else
     echo "没有找到固件文件！！！"
+    # 显示bin/targets目录结构，帮助调试
+    echo "bin/targets目录内容:"
+    find /home/build/immortalwrt/bin/targets -type f | sort
   fi
   
   # 清理临时文件
@@ -198,9 +203,13 @@ compress_firmware_encrypted() {
   # 查找所有固件文件
   firmware_list=$(mktemp)
   
-  # 使用通用通配符查找所有可能的固件文件
-  # 查找所有 .img 和 .img.gz 文件，这应该能覆盖大多数平台的固件格式
-  find /home/build/immortalwrt/bin/targets -name "*.img" -o -name "*.img.gz" > "$firmware_list" 2>/dev/null || true
+  # 使用更广泛的模式查找固件文件
+  echo "查找固件文件..."
+  find /home/build/immortalwrt/bin/targets -type f -name "*.img*" -o -name "*.bin" -o -name "*.gz" > "$firmware_list" 2>/dev/null || true
+  
+  # 显示找到的文件列表，帮助调试
+  echo "找到以下固件文件:"
+  cat "$firmware_list"
   
   if [ -s "$firmware_list" ]; then
     # 为每个固件单独创建加密zip包
@@ -211,7 +220,7 @@ compress_firmware_encrypted() {
       zip_file="${output_dir}/${firmware_name}.zip"
       
       echo "正在压缩文件 $firmware_name 到 $zip_file..."
-      # 使用-e选项启用加密并隐藏文件名
+      # 使用-j选项确保不包含路径，-e启用加密
       zip -j -e -P "$password" "$zip_file" "$firmware_path"
       
       # 验证zip文件是否创建成功
@@ -229,6 +238,9 @@ compress_firmware_encrypted() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - 所有固件已加密压缩完成并删除源文件！！！"
   else
     echo "$(date '+%Y-%m-%d %H:%M:%S') - 没有找到固件文件，跳过压缩！！！"
+    # 显示bin/targets目录结构，帮助调试
+    echo "bin/targets目录内容:"
+    find /home/build/immortalwrt/bin/targets -type f | sort
   fi
   
   # 清理临时文件
