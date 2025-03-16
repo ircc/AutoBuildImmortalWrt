@@ -17,6 +17,12 @@ create_custom_settings() {
   mkdir -p ${CONFIG_DIR}
   mkdir -p ${UCI_DEFAULTS_DIR}
 
+  # 确保ENABLE_SINGLE_NIC是数字，如果不是则默认为0
+  if ! [[ "${ENABLE_SINGLE_NIC}" =~ ^[0-1]$ ]]; then
+    echo "警告: ENABLE_SINGLE_NIC 不是有效的数字(0或1)，设置为默认值0"
+    ENABLE_SINGLE_NIC=0
+  fi
+
   # 创建custom配置文件 yml传入环境变写入配置文件 供99-custom.sh读取
   cat << EOF > ${CUSTOM_SETTINGS}
 # 自动生成的配置文件 - $(date '+%Y-%m-%d %H:%M:%S')
@@ -25,7 +31,7 @@ sys_account=${SYS_ACCOUNT:-admin}
 lan_ip=${LAN_IP:-10.0.20.1}
 wifi_name=${WIFI_NAME:-ImmortalWrt}
 wifi_pwd=${WIFI_PWD:-88888888}
-build_auth=${BUILD_AUTH}
+build_auth=${BUILD_AUTH:-Immortal}
 enable_single_nic=${ENABLE_SINGLE_NIC:-0}
 EOF
   # 判断PPPOE_ENABLE是否为yes，如果是则保存PPPOE账号和密码
@@ -50,14 +56,14 @@ EOF
 print_firmware_info() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') - 详细固件列表:"
   # 使用更广泛的模式查找固件文件
-  find /home/build/immortalwrt/bin/targets -type f -name "*.img*" -o -name "*.bin" -o -name "*.gz" 2>/dev/null | sort
+  find /home/build/immortalwrt/bin/targets -type f \( -name "*.img*" -o -name "*.bin" -o -name "*.gz" \) 2>/dev/null | sort
   
   # 打印固件大小
   echo "$(date '+%Y-%m-%d %H:%M:%S') - 固件信息:"
   # 使用临时文件存储find结果，避免管道问题
   firmware_list=$(mktemp)
   # 使用更广泛的模式查找固件文件
-  find /home/build/immortalwrt/bin/targets -type f -name "*.img*" -o -name "*.bin" -o -name "*.gz" > "$firmware_list" 2>/dev/null || true
+  find /home/build/immortalwrt/bin/targets -type f \( -name "*.img*" -o -name "*.bin" -o -name "*.gz" \) > "$firmware_list" 2>/dev/null || true
   
   if [ -s "$firmware_list" ]; then
     while read -r firmware; do
@@ -197,6 +203,12 @@ compress_firmware_encrypted() {
   
   echo "$(date '+%Y-%m-%d %H:%M:%S') - 开始加密压缩固件..."
   
+  # 检查密码是否为空
+  if [ -z "$password" ]; then
+    echo "警告: 加密密码为空，将使用默认密码"
+    password="password"
+  fi
+  
   # 创建输出目录（如果不存在）
   mkdir -p "$output_dir"
   
@@ -209,7 +221,7 @@ compress_firmware_encrypted() {
   
   # 使用更广泛的模式查找固件文件
   echo "查找固件文件..."
-  find /home/build/immortalwrt/bin/targets -type f -name "*.img*" -o -name "*.bin" -o -name "*.gz" > "$firmware_list" 2>/dev/null || true
+  find /home/build/immortalwrt/bin/targets -type f \( -name "*.img*" -o -name "*.bin" -o -name "*.gz" \) > "$firmware_list" 2>/dev/null || true
   
   # 显示找到的文件列表，帮助调试
   echo "找到以下固件文件:"
