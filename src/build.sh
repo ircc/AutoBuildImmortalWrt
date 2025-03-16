@@ -81,6 +81,14 @@ enable_packages_in_config() {
   local modified=0
   local not_found_packages=""
   local changed_enabled_packages=""
+  
+  # 检查传入的包列表是否为空
+  if [ -z "$packages_list" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - 包列表为空，跳过处理" >&2
+    # 返回空字符串作为not_found_packages
+    echo ""
+    return 0
+  fi
    
   # 将软件包列表拆分为数组
   IFS=' ' read -r -a packages_array <<< "$packages_list"
@@ -141,6 +149,10 @@ process_packages_config() {
   local base_packages="$1"
   local extra_packages="$2"
   local custom_packages="$3"
+    
+  echo "BASE_PACKAGES: $base_packages" >&2
+  echo "EXTRA_PACKAGES: $extra_packages" >&2
+  echo "CUSTOM_PACKAGES: $custom_packages" >&2
   
   # 去除自定义包列表中可能存在的引号
   custom_packages=$(echo "$custom_packages" | sed 's/^"//;s/"$//;s/""//g')
@@ -174,10 +186,10 @@ process_packages_config() {
   extra_not_found=$(echo "$extra_not_found" | xargs)
   custom_not_found=$(echo "$custom_not_found" | xargs)
 
-  # 确保PACKAGES变量格式正确
+  # 确保PACKAGES变量格式正确（合并两行操作：去除多余空格和引号）
   local packages="$base_not_found $extra_not_found $custom_not_found"
-  packages=$(echo "$packages" | tr -s ' ' | sed 's/^ //;s/ $//')
-  
+  packages=$(echo "$packages" | tr -s ' ' | sed 's/^ //;s/ $//' | tr -d '"')
+
   # 将包信息保存到文件，供GitHub Actions使用
   mkdir -p "/home/build/immortalwrt/bin"
   echo "BASE_PACKAGES=\"$base_packages\"" > /home/build/immortalwrt/bin/packages_info.txt
@@ -266,6 +278,9 @@ build_firmware_image() {
   # 去除配置文件名称中可能存在的引号
   profile=$(echo "$profile" | tr -d '"')
   
+  # 确保packages变量不包含不匹配的引号和特殊字符
+  packages=$(echo "$packages" | tr -d '"' | sed 's/[^a-zA-Z0-9 _-]//g')
+  
   # 构建镜像
   echo "$(date '+%Y-%m-%d %H:%M:%S') - 构建镜像:$profile..."
   make image PROFILE="$profile" PACKAGES="$packages" FILES="$files_dir" ROOTFS_PARTSIZE="$rootfs_size"
@@ -347,9 +362,6 @@ load_packages_from_config() {
     EXTRA_PACKAGES="$extra_packages_value"
   fi
   
-  echo "BASE_PACKAGES: $BASE_PACKAGES"
-  echo "EXTRA_PACKAGES: $EXTRA_PACKAGES"
-  
   return 0
 }
 
@@ -413,13 +425,13 @@ initialize_build_config() {
     return 1
   fi
 
-  # 从配置文件加载软件包列表到全局变量
-  load_packages_from_config "$PLATFORM_TYPE" "$FIRMWARE_VERSION"
-
   # 调用创建自定义配置文件的函数
   create_custom_settings
 
   echo "$(date '+%Y-%m-%d %H:%M:%S') - 开始检查并启用软件包..."
+  # 从配置文件加载软件包列表到全局变量
+  load_packages_from_config "$PLATFORM_TYPE" "$FIRMWARE_VERSION"
+
   # 调用函数处理软件包配置并获取PACKAGES变量
   PACKAGES=$(process_packages_config "$BASE_PACKAGES" "$EXTRA_PACKAGES" "$CUSTOM_PACKAGES")
   echo "需要安装的PACKAGES包列表：$PACKAGES"
