@@ -142,6 +142,9 @@ process_packages_config() {
   local extra_packages="$2"
   local custom_packages="$3"
   
+  # 去除自定义包列表中可能存在的引号
+  custom_packages=$(echo "$custom_packages" | sed 's/^"//;s/"$//;s/""//g')
+  
   # 复制配置文件到bin目录，以便与固件一起发布
   cp /home/build/immortalwrt/.config /home/build/immortalwrt/bin/config_old.txt >&2
   
@@ -196,9 +199,9 @@ compress_firmware_encrypted() {
   # 创建输出目录（如果不存在）
   mkdir -p "$output_dir"
   
-  # 安装zip工具
-  echo "正在安装zip工具..."
-  apt-get update && apt-get install -y zip
+  # 安装7z工具
+  echo "正在安装7z工具..."
+  apt-get update && apt-get install -y p7zip-full
   
   # 查找所有固件文件
   firmware_list=$(mktemp)
@@ -212,26 +215,26 @@ compress_firmware_encrypted() {
   cat "$firmware_list"
   
   if [ -s "$firmware_list" ]; then
-    # 为每个固件单独创建加密zip包
+    # 为每个固件单独创建加密7z包
     while read -r firmware_path; do
       # 获取固件文件名（不含路径）
       firmware_name=$(basename "$firmware_path")
-      # 创建与固件同名的zip文件
-      zip_file="${output_dir}/${firmware_name}.zip"
+      # 创建与固件同名的7z文件
+      archive_file="${output_dir}/${firmware_name}.7z"
       
-      echo "正在压缩文件 $firmware_name 到 $zip_file..."
-      # 使用-j选项确保不包含路径，-e启用加密
-      zip -j -e -P "$password" "$zip_file" "$firmware_path"
+      echo "正在压缩文件 $firmware_name 到 $archive_file..."
+      # 使用7z命令，-mhe=on参数启用文件名加密
+      7z a -p"$password" -mhe=on "$archive_file" "$firmware_path"
       
-      # 验证zip文件是否创建成功
-      if [ -f "$zip_file" ]; then
-        echo "ZIP文件创建成功: $(ls -lh "$zip_file")"
+      # 验证7z文件是否创建成功
+      if [ -f "$archive_file" ]; then
+        echo "7z文件创建成功: $(ls -lh "$archive_file")"
         
         # 压缩成功后删除源固件文件
         echo "删除源固件文件: $firmware_path"
         rm -f "$firmware_path"
       else
-        echo "警告: ZIP文件 $zip_file 创建失败！！！"
+        echo "警告: 7z文件 $archive_file 创建失败！！！"
       fi
     done < "$firmware_list"
     
@@ -362,17 +365,47 @@ print_environment_variables() {
   # echo "PPPOE_PWD: ${PPPOE_PWD:-未设置}"
   # echo "ZIP_PWD: ${ZIP_PWD:-未设置}"
   echo "CUSTOM_PACKAGES: ${CUSTOM_PACKAGES:-未设置}"
+  
+  # 检查必要的环境变量是否设置
+  local has_error=0
+  
+  if [ -z "$PLATFORM_TYPE" ]; then
+    echo "错误: PLATFORM_TYPE 环境变量未设置！" >&2
+    has_error=1
+  fi
+  
+  if [ -z "$FIRMWARE_VERSION" ]; then
+    echo "错误: FIRMWARE_VERSION 环境变量未设置！" >&2
+    has_error=1
+  fi
+  
+  if [ -z "$PART_SIZE" ]; then
+    echo "错误: PART_SIZE 环境变量未设置！" >&2
+    has_error=1
+  fi
+  
+  if [ -z "$BUILD_PROFILE" ]; then
+    echo "错误: BUILD_PROFILE 环境变量未设置！" >&2
+    has_error=1
+  fi
+  
+  # 如果有错误，返回失败状态
+  if [ $has_error -eq 1 ]; then
+    return 1
+  fi
+  
+  return 0
 }
 
 # 定义初始化配置的函数
 initialize_build_config() {
   # 调用打印环境变量函数
   print_environment_variables
-
-  # 从环境变量获取平台类型和固件版本
-  PLATFORM_TYPE="${PLATFORM_TYPE:-x86-64}"
-  FIRMWARE_VERSION="${FIRMWARE_VERSION:-24.10.0}"
-  CUSTOM_PACKAGES="${CUSTOM_PACKAGES:-}"
+  # 检查环境变量是否正确设置
+  if [ $? -ne 0 ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - 环境变量检查失败，退出构建！" >&2
+    return 1
+  fi
 
   # 从配置文件加载软件包列表到全局变量
   load_packages_from_config "$PLATFORM_TYPE" "$FIRMWARE_VERSION"
@@ -390,6 +423,11 @@ initialize_build_config() {
 ##################################################################################################################################
 # 调用初始化配置函数
 initialize_build_config
+# 检查初始化配置是否成功
+if [ $? -ne 0 ]; then
+    echo "初始化配置失败，退出构建！"
+    exit 1
+fi
 
 # 暂不构建，仅测试
 # exit 1

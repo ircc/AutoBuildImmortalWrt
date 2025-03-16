@@ -163,10 +163,10 @@ jobs:
         run: |
           # 显示bin目录内容，用于调试
           echo "bin目录内容:"
-          find ${{ github.workspace }}/bin -name "*.zip" | sort
+          find ${{ github.workspace }}/bin -type f | sort
           
-          # 复制加密zip包到工作目录（直接从bin目录）
-          cp ${{ github.workspace }}/bin/*.zip ${{ github.workspace }}/ || true
+          # 只复制7z格式的压缩包到工作目录
+          cp ${{ github.workspace }}/bin/*.7z ${{ github.workspace }}/ 2>/dev/null || true
           # 复制配置文件到工作目录
           cp ${{ github.workspace }}/bin/config_old.txt ${{ github.workspace }}/
           cp ${{ github.workspace }}/bin/config_new.txt ${{ github.workspace }}/
@@ -177,21 +177,22 @@ jobs:
           echo "当前工作目录内容:"
           ls -la ${{ github.workspace }}
           
-          # 为所有zip包生成SHA-256校验和
-          for file in *.zip; do
+          # 为所有7z包生成SHA-256校验和
+          for file in ${{ github.workspace }}/*.7z; do
             if [ -f "$file" ]; then
+              echo "生成校验和: $file"
               sha256sum "$file" > "$file.sha256"
               sha256sum -c "$file.sha256"
             fi
           done
           
-          # 读取包信息文件（如果存在）- 修改为更安全的方式
+          # 读取包信息文件（如果存在）- 修改为更安全的方式并处理多余引号
           if [ -f "${{ github.workspace }}/packages_info.txt" ]; then
-            # 使用grep提取变量值而不是source命令
-            BASE_PACKAGES=$(grep "^BASE_PACKAGES=" "${{ github.workspace }}/packages_info.txt" | cut -d'=' -f2-)
-            EXTRA_PACKAGES=$(grep "^EXTRA_PACKAGES=" "${{ github.workspace }}/packages_info.txt" | cut -d'=' -f2-)
-            CUSTOM_PACKAGES=$(grep "^CUSTOM_PACKAGES=" "${{ github.workspace }}/packages_info.txt" | cut -d'=' -f2-)
-            PACKAGES=$(grep "^PACKAGES=" "${{ github.workspace }}/packages_info.txt" | cut -d'=' -f2-)
+            # 使用grep提取变量值并去除多余引号
+            BASE_PACKAGES=$(grep "^BASE_PACKAGES=" "${{ github.workspace }}/packages_info.txt" | cut -d'=' -f2- | sed 's/^"//;s/"$//;s/""//g')
+            EXTRA_PACKAGES=$(grep "^EXTRA_PACKAGES=" "${{ github.workspace }}/packages_info.txt" | cut -d'=' -f2- | sed 's/^"//;s/"$//;s/""//g')
+            CUSTOM_PACKAGES=$(grep "^CUSTOM_PACKAGES=" "${{ github.workspace }}/packages_info.txt" | cut -d'=' -f2- | sed 's/^"//;s/"$//;s/""//g')
+            PACKAGES=$(grep "^PACKAGES=" "${{ github.workspace }}/packages_info.txt" | cut -d'=' -f2- | sed 's/^"//;s/"$//;s/""//g')
             
             echo "BASE_PACKAGES=$BASE_PACKAGES" >> $GITHUB_ENV
             echo "EXTRA_PACKAGES=$EXTRA_PACKAGES" >> $GITHUB_ENV
@@ -252,13 +253,13 @@ jobs:
             ```
             
             ### 加密固件包
-            - 加密方式: ZIP加密
+            - 加密方式: 7z加密
             - 密码: 请联系管理员获取
             
             ### 固件SHA256校验和
             请查看附件中的 .sha256 文件
           files: |
-            ${{ github.workspace }}/*.zip
+            ${{ github.workspace }}/*.7z
             ${{ github.workspace }}/*.sha256
             ${{ github.workspace }}/config_old.txt
             ${{ github.workspace }}/config_new.txt
