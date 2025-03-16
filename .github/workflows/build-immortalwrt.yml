@@ -92,18 +92,23 @@ jobs:
             image_name="immortalwrt/imagebuilder:bcm27xx-bcm2711-openwrt-${firmware_version}"
             # 树莓派4B特定的构建配置
             profile="rpi-4"
-            echo "使用树莓派4B配置文件: $profile"
+            # 树莓派4B不能设置为单网卡模式
+            enable_single_nic="0"
+            echo "使用树莓派4B配置文件: $profile (禁用单网卡模式)"
           else
             # x86-64保持不变
             image_name="immortalwrt/imagebuilder:${platform_type}-openwrt-${firmware_version}"
             # x86-64默认配置
             profile="generic"
-            echo "使用x86-64配置文件: $profile"
+            # x86-64可以使用单网卡模式
+            enable_single_nic="1"
+            echo "使用x86-64配置文件: $profile (启用单网卡模式)"
           fi
           
           echo "使用Docker镜像: $image_name"
           # 将镜像名称保存为环境变量，供后续步骤使用
           echo "IMAGE_NAME=$image_name" >> $GITHUB_ENV
+          echo "ENABLE_SINGLE_NIC=$enable_single_nic" >> $GITHUB_ENV
 
           # 创建bin目录（如果不存在）
           mkdir -p "${{ github.workspace }}/bin"
@@ -126,17 +131,22 @@ jobs:
           FIRMWARE_VERSION="${{ github.event.inputs.firmware_version }}"
           BUILD_PROFILE="${profile}"
           CUSTOM_PACKAGES="${{ github.event.inputs.custom_packages }}"
+          ENABLE_SINGLE_NIC="${enable_single_nic}"
           EOF
 
           echo "环境变量文件创建成功"
 
       - name: 2. 构建ImmortalWrt固件
+        id: build_firmware
         run: |
           firmware_sizes="${{ github.event.inputs.firmware_size }}"
           platform_type="${{ github.event.inputs.platform_type }}"
           
           # 它将 firmware_sizes 字符串按逗号分隔，拆分成数组 firmware_size_list
           IFS=',' read -r -a firmware_size_list <<< "$firmware_sizes"
+          
+          # 设置构建状态标志
+          build_success=true
 
           # 循环构建不同大小的固件
           for firmware_size in "${firmware_size_list[@]}"; do
@@ -157,7 +167,24 @@ jobs:
               -e PART_SIZE="${firmware_size}" \
               "${IMAGE_NAME}" \
               /bin/bash /home/build/immortalwrt/src/build.sh
+              
+            # 检查构建结果
+            if [ $? -ne 0 ]; then
+              echo "固件大小 ${firmware_size}MB 构建失败！"
+              build_success=false
+            else
+              echo "固件大小 ${firmware_size}MB 构建成功！"
+            fi
           done
+          
+          # 设置构建结果到输出变量
+          echo "build_success=$build_success" >> $GITHUB_OUTPUT
+          
+          # 如果任何一个构建失败，则整体失败
+          if [ "$build_success" = "false" ]; then
+            echo "至少有一个固件构建失败，请检查日志！"
+            exit 1
+          fi
 
       - name: 生成固件SHA-256校验和
         run: |
@@ -203,7 +230,7 @@ jobs:
       # 删除已存在的标签
       - name: 删除已经存在的标签
         run: |
-          git push --delete origin build-immortalwrt-${{ github.event.inputs.platform_type }}-${{ github.event.inputs.firmware_version }} || true
+          git push --delete origin ImmortalWrt-${{ github.event.inputs.platform_type }}-${{ github.event.inputs.firmware_version }} || true
         continue-on-error: true
         
       # 清理之前发布的资产文件

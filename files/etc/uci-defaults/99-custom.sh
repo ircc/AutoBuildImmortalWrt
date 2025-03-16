@@ -13,7 +13,7 @@ log_msg "Starting 99-custom.sh"
 # 全局变量，设置默认值
 sys_account="admin"
 sys_pwd="admin"
-lan_ip="192.168.100.1"
+lan_ip="10.0.20.1"
 wifi_name="ImmortalWrt"
 wifi_pwd="88888888"
 enable_single_nic=0
@@ -148,6 +148,13 @@ configure_multi_nic() {
    local section=$(uci show network | awk -F '[.=]' '/\.@?device\[\d+\]\.name=.br-lan.$/ {print $2; exit}')
    if [ -z "$section" ]; then
       log_msg "错误: 无法找到设备 'br-lan'"
+      # 尝试创建br-lan设备
+      log_msg "尝试创建br-lan设备..."
+      uci add network device
+      uci set network.@device[-1].name='br-lan'
+      uci set network.@device[-1].type='bridge'
+      section="@device[-1]"
+      log_msg "已创建br-lan设备"
    else
       # 删除原来的ports列表
       uci -q delete "network.$section.ports"
@@ -163,8 +170,35 @@ configure_multi_nic() {
    uci set network.lan.ipaddr="$lan_ip"
    uci set network.lan.netmask='255.255.255.0'
    log_msg "已设置LAN IP: $lan_ip"
+
+   # 配置DHCP服务器
+   uci set dhcp.lan=dhcp                # 设置LAN接口的DHCP服务
+   uci set dhcp.lan.interface='lan'      # 指定DHCP服务绑定到lan接口
+   uci set dhcp.lan.start='100'          # 设置DHCP地址池的起始地址（从x.x.x.100开始分配）
+   uci set dhcp.lan.limit='150'          # 设置可分配的IP地址数量（最多分配150个地址）
+   uci set dhcp.lan.leasetime='12h'      # 设置IP地址租约时间为12小时
+   uci set dhcp.lan.ignore='0'           # 启用DHCP服务（0表示不忽略此DHCP配置）
+   log_msg "已配置LAN口DHCP服务器"
+   
+   # 确保dnsmasq服务启用
+   uci set dhcp.@dnsmasq[0].domainneeded='1'
+   uci set dhcp.@dnsmasq[0].authoritative='1'
+   log_msg "已确保dnsmasq基本配置正确"
    
    uci commit network
+   uci commit dhcp
+   
+   # 尝试重启相关服务
+   log_msg "尝试重启网络和DHCP服务..."
+   if [ -x /etc/init.d/network ]; then
+      /etc/init.d/network restart
+      log_msg "网络服务已重启"
+   fi
+   
+   if [ -x /etc/init.d/dnsmasq ]; then
+      /etc/init.d/dnsmasq restart
+      log_msg "DHCP服务已重启"
+   fi
 }
 
 # 定义配置网卡的函数
@@ -258,6 +292,17 @@ configure_system_services() {
    uci set dropbear.@dropbear[0].Interface=''
    log_msg "已允许所有网口连接SSH"
 
+   # 确保DHCP服务已启用
+   uci set dhcp.@dnsmasq[0].domainneeded='1'      # 要求域名查询必须包含域名部分，防止单标签查询
+   uci set dhcp.@dnsmasq[0].boguspriv='1'         # 拒绝反向查询私有IP范围
+   uci set dhcp.@dnsmasq[0].localise_queries='1'  # 根据查询源IP返回本地化的DNS响应
+   uci set dhcp.@dnsmasq[0].rebind_protection='1' # 启用DNS重绑定保护，防止DNS重绑定攻击
+   uci set dhcp.@dnsmasq[0].rebind_localhost='1'  # 允许对localhost的DNS重绑定
+   uci set dhcp.@dnsmasq[0].local='/lan/'         # 设置本地域名后缀为.lan
+   uci set dhcp.@dnsmasq[0].domain='lan'          # 设置DHCP分配给客户端的域名为lan
+   uci set dhcp.@dnsmasq[0].authoritative='1'     # 设置为权威服务器，加快DHCP分配速度
+   log_msg "已确保DHCP服务配置正确"               # 记录日志
+
    # 提交所有更改
    uci commit
 
@@ -282,6 +327,38 @@ set_build_author() {
    fi
 }
 
+# 添加新函数检查服务状态
+check_services_status() {
+   log_msg "检查关键服务状态..."
+   
+   # 检查网络配置
+   log_msg "网络配置:"
+   uci show network.lan >> $LOGFILE
+   uci show dhcp.lan >> $LOGFILE
+   
+   # 检查DHCP服务状态
+   if [ -x /etc/init.d/dnsmasq ]; then
+      if /etc/init.d/dnsmasq status | grep -q running; then
+         log_msg "DHCP服务状态: 运行中"
+      else
+         log_msg "DHCP服务状态: 未运行，尝试启动..."
+         /etc/init.d/dnsmasq start
+      fi
+   else
+      log_msg "警告: DHCP服务脚本不存在或不可执行"
+   fi
+   
+   # 检查网络接口状态
+   if [ -x /sbin/ifconfig ]; then
+      log_msg "网络接口状态:"
+      /sbin/ifconfig br-lan >> $LOGFILE 2>&1
+   fi
+   
+   log_msg "服务状态检查完成"
+}
+
+###########################################################################################################################################
+
 # 定义主函数，执行所有配置步骤
 main() {
    log_msg "开始执行主函数..."
@@ -303,12 +380,15 @@ main() {
 
    # 设置编译作者信息
    set_build_author "$build_auth"
-
+   
+   # 检查服务状态
+   check_services_status
+   
    log_msg "所有配置完成"
-   echo "All done!"
 }
 
 # 执行主函数
 main
 
+echo "All done!"
 exit 0
