@@ -26,6 +26,7 @@ lan_ip=${LAN_IP:-10.0.20.1}
 wifi_name=${WIFI_NAME:-ImmortalWrt}
 wifi_pwd=${WIFI_PWD:-88888888}
 build_auth=${BUILD_AUTH}
+enable_single_nic=${ENABLE_SINGLE_NIC:-0}
 EOF
   # 判断PPPOE_ENABLE是否为yes，如果是则保存PPPOE账号和密码
   if [ "${PPPOE_ENABLE}" = "yes" ]; then
