@@ -16,7 +16,6 @@ sys_pwd="admin"
 lan_ip="10.0.20.1"
 wifi_name="ImmortalWrt"
 wifi_pwd="88888888"
-enable_single_nic=0
 # dhcp_domain_ip="203.107.6.88"
 build_auth="Immortal"
 enable_pppoe="no"
@@ -31,7 +30,7 @@ load_custom_settings() {
    # 记录默认LAN IP值和编译作者信息
    log_msg "默认LAN IP: $lan_ip"
    log_msg "默认编译作者: $build_auth"
-   log_msg "默认单网卡模式: $([ $enable_single_nic -eq 1 ] && echo "启用" || echo "禁用")"
+   # 移除单网卡模式日志
    
    # 如果配置文件存在，则加载配置
    if [ -f "$settings_file" ]; then
@@ -48,23 +47,16 @@ load_custom_settings() {
          echo "WiFi名称: ${wifi_name:-未设置}"
          echo "WiFi密码: [已隐藏]"
          echo "编译作者: ${build_auth:-未设置}"
-         echo "单网卡模式: $([ $enable_single_nic -eq 1 ] && echo "启用" || echo "禁用")"
+         # 移除单网卡模式日志
          # echo "DHCP域名IP: ${dhcp_domain_ip:-未设置}"
          [ "$enable_pppoe" = "yes" ] && echo "PPPoE已启用，账号: ${pppoe_account:-未设置}"
       } >> $LOGFILE
-      
+
       # 加载完成后删除配置文件，避免敏感信息泄露
       if rm -f "$settings_file"; then
          echo "已成功删除配置文件 $settings_file 以保护敏感信息" >> $LOGFILE
       else
          echo "警告: 删除配置文件 $settings_file 失败" >> $LOGFILE
-      fi
-      
-      # 检查文件是否真的被删除
-      if [ ! -f "$settings_file" ]; then
-         echo "确认: 配置文件已被删除" >> $LOGFILE
-      else
-         echo "严重警告: 配置文件仍然存在，可能存在权限问题" >> $LOGFILE
       fi
       
       echo "$(date '+%Y-%m-%d %H:%M:%S') - 自定义配置加载完成" >> $LOGFILE
@@ -76,155 +68,8 @@ load_custom_settings() {
    fi
 }
 
-# 定义检测物理网卡的函数
-detect_physical_nics() {
-   local count=0
-   local ifnames=""
-   
-   # 检查网卡目录是否存在
-   if [ ! -d "/sys/class/net" ]; then
-      log_msg "错误: 网卡目录不存在，无法检测网卡"
-      return 1
-   fi
-   
-   # 检测物理网卡
-   for iface in /sys/class/net/*; do
-      local iface_name=$(basename "$iface")
-      # 检查是否为物理网卡（排除回环设备和无线设备）
-      if [ -e "$iface/device" ] && echo "$iface_name" | grep -Eq '^eth|^en'; then
-         count=$((count + 1))
-         ifnames="$ifnames $iface_name"
-      fi
-   done
-   
-   # 删除多余空格
-   ifnames=$(echo "$ifnames" | awk '{$1=$1};1')
-   
-   # 检查是否找到网卡
-   if [ -z "$ifnames" ]; then
-      log_msg "警告: 未检测到任何物理网卡，使用默认配置"
-      return 1
-   fi
-   
-   log_msg "检测到 $count 个物理网卡: $ifnames"
-   
-   # 将结果存储到全局变量
-   NIC_COUNT=$count
-   NIC_NAMES=$ifnames
-   
-   return 0
-}
-
-# 配置单网卡模式
-configure_single_nic() {
-   # 单网口设备 类似于NAS模式 动态获取ip模式
-   uci set network.lan.proto='dhcp'
-   uci commit network
-   log_msg "单网卡模式: 设置为DHCP客户端模式"
-}
-
-# 配置多网卡模式
-configure_multi_nic() {
-   local ifnames="$1"
-   
-   # 提取第一个接口作为WAN
-   local wan_ifname=$(echo "$ifnames" | awk '{print $1}')
-   # 剩余接口保留给LAN
-   local lan_ifnames=$(echo "$ifnames" | cut -d ' ' -f2-)
-   
-   log_msg "多网卡模式: WAN=$wan_ifname, LAN=$lan_ifnames"
-   
-   # 设置WAN接口基础配置
-   uci set network.wan=interface
-   uci set network.wan.device="$wan_ifname"
-   uci set network.wan.proto='dhcp'
-   
-   # 设置WAN6绑定网口
-   uci set network.wan6=interface
-   uci set network.wan6.device="$wan_ifname"
-   
-   # 更新LAN接口成员
-   # 查找对应设备的section名称
-   local section=$(uci show network | awk -F '[.=]' '/\.@?device\[\d+\]\.name=.br-lan.$/ {print $2; exit}')
-   if [ -z "$section" ]; then
-      log_msg "错误: 无法找到设备 'br-lan'"
-      # 尝试创建br-lan设备
-      log_msg "尝试创建br-lan设备..."
-      uci add network device
-      uci set network.@device[-1].name='br-lan'
-      uci set network.@device[-1].type='bridge'
-      section="@device[-1]"
-      log_msg "已创建br-lan设备"
-   else
-      # 删除原来的ports列表
-      uci -q delete "network.$section.ports"
-      # 添加新的ports列表
-      for port in $lan_ifnames; do
-         uci add_list "network.$section.ports"="$port"
-      done
-      log_msg "已更新br-lan设备的端口列表"
-   fi
-   
-   # LAN口设置静态IP
-   uci set network.lan.proto='static'
-   uci set network.lan.ipaddr="$lan_ip"
-   uci set network.lan.netmask='255.255.255.0'
-   log_msg "已设置LAN IP: $lan_ip"
-
-   # 配置DHCP服务器
-   uci set dhcp.lan=dhcp                # 设置LAN接口的DHCP服务
-   uci set dhcp.lan.interface='lan'      # 指定DHCP服务绑定到lan接口
-   uci set dhcp.lan.start='100'          # 设置DHCP地址池的起始地址（从x.x.x.100开始分配）
-   uci set dhcp.lan.limit='150'          # 设置可分配的IP地址数量（最多分配150个地址）
-   uci set dhcp.lan.leasetime='12h'      # 设置IP地址租约时间为12小时
-   uci set dhcp.lan.ignore='0'           # 启用DHCP服务（0表示不忽略此DHCP配置）
-   log_msg "已配置LAN口DHCP服务器"
-   
-   # 确保dnsmasq服务启用
-   uci set dhcp.@dnsmasq[0].domainneeded='1'
-   uci set dhcp.@dnsmasq[0].authoritative='1'
-   log_msg "已确保dnsmasq基本配置正确"
-   
-   uci commit network
-   uci commit dhcp
-   
-   # 尝试重启相关服务
-   log_msg "尝试重启网络和DHCP服务..."
-   if [ -x /etc/init.d/network ]; then
-      /etc/init.d/network restart
-      log_msg "网络服务已重启"
-   fi
-   
-   if [ -x /etc/init.d/dnsmasq ]; then
-      /etc/init.d/dnsmasq restart
-      log_msg "DHCP服务已重启"
-   fi
-}
-
-# 定义配置网卡的函数
-configure_network_interfaces() {
-   log_msg "开始配置网卡接口..."
-   
-   # 检测物理网卡数量和名字存入NIC_COUNT和NIC_NAMES
-   detect_physical_nics
-   
-   # 根据网卡数量配置网络（单臂路由使用）
-   # 注意Raspberry-Pi-4B不能设置为单网卡模式（因为它需要接usb网卡）
-   if [ "$NIC_COUNT" -eq 1 ] && [ "$enable_single_nic" -eq 1 ]; then
-      configure_single_nic
-   elif [ "$NIC_COUNT" -gt 1 ]; then
-      configure_multi_nic "$NIC_NAMES"
-   else
-      log_msg "错误: 无效的网卡数量: $NIC_COUNT"
-      return 1
-   fi
-   
-   log_msg "网卡接口配置完成"
-   return 0
-}
-
 # 定义配置PPPoE的函数
-configure_pppoe() {
+configure_pppoe_settings() {
    # 判断是否启用 PPPoE
    if [ "$enable_pppoe" = "yes" ] && [ -n "$pppoe_account" ] && [ -n "$pppoe_pwd" ]; then
       log_msg "PPPoE已启用，开始配置..."
@@ -240,11 +85,7 @@ configure_pppoe() {
       uci set network.wan6.proto='none'
       log_msg "PPPoE配置完成: 用户名=$pppoe_account"
    else
-      # 确保WAN接口存在时使用DHCP
-      if uci get network.wan >/dev/null 2>&1; then
-         log_msg "PPPoE未启用，确保WAN接口使用DHCP"
-         uci set network.wan.proto='dhcp'
-      fi
+      log_msg "PPPoE未启用或配置不完整，跳过配置"
    fi
 
    uci commit network
@@ -270,45 +111,6 @@ configure_wifi_settings() {
    log_msg "无线网络设置配置完成"
 }
 
-# 定义配置系统服务的函数
-configure_system_services() {
-   log_msg "开始配置系统服务..."
-
-   # 设置默认防火墙规则，方便虚拟机首次访问 WebUI
-   uci set firewall.@zone[1].input='ACCEPT'
-   log_msg "已设置WAN区域防火墙规则为ACCEPT"
-
-   # # 设置主机名映射，解决安卓原生 TV 无法联网的问题
-   # uci add dhcp domain
-   # uci set "dhcp.@domain[-1].name=time.android.com"
-   # uci set "dhcp.@domain[-1].ip=$dhcp_domain_ip"
-   # log_msg "已设置time.android.com域名映射到 $dhcp_domain_ip"
-
-   # 设置所有网口可访问网页终端
-   uci delete ttyd.@ttyd[0].interface
-   log_msg "已允许所有网口访问网页终端"
-
-   # 设置所有网口可连接 SSH
-   uci set dropbear.@dropbear[0].Interface=''
-   log_msg "已允许所有网口连接SSH"
-
-   # 确保DHCP服务已启用
-   uci set dhcp.@dnsmasq[0].domainneeded='1'      # 要求域名查询必须包含域名部分，防止单标签查询
-   uci set dhcp.@dnsmasq[0].boguspriv='1'         # 拒绝反向查询私有IP范围
-   uci set dhcp.@dnsmasq[0].localise_queries='1'  # 根据查询源IP返回本地化的DNS响应
-   uci set dhcp.@dnsmasq[0].rebind_protection='1' # 启用DNS重绑定保护，防止DNS重绑定攻击
-   uci set dhcp.@dnsmasq[0].rebind_localhost='1'  # 允许对localhost的DNS重绑定
-   uci set dhcp.@dnsmasq[0].local='/lan/'         # 设置本地域名后缀为.lan
-   uci set dhcp.@dnsmasq[0].domain='lan'          # 设置DHCP分配给客户端的域名为lan
-   uci set dhcp.@dnsmasq[0].authoritative='1'     # 设置为权威服务器，加快DHCP分配速度
-   log_msg "已确保DHCP服务配置正确"               # 记录日志
-
-   # 提交所有更改
-   uci commit
-
-   log_msg "系统服务配置完成"
-}
-
 # 定义设置编译作者信息的函数
 set_build_author() {
    local author="${1:-$build_auth}"
@@ -327,34 +129,18 @@ set_build_author() {
    fi
 }
 
-# 添加新函数检查服务状态
-check_services_status() {
-   log_msg "检查关键服务状态..."
-   
-   # 检查网络配置
-   log_msg "网络配置:"
-   uci show network.lan >> $LOGFILE
-   uci show dhcp.lan >> $LOGFILE
-   
-   # 检查DHCP服务状态
-   if [ -x /etc/init.d/dnsmasq ]; then
-      if /etc/init.d/dnsmasq status | grep -q running; then
-         log_msg "DHCP服务状态: 运行中"
-      else
-         log_msg "DHCP服务状态: 未运行，尝试启动..."
-         /etc/init.d/dnsmasq start
-      fi
+# 定义配置LAN接口的函数
+configure_lan_settings() {
+   log_msg "开始配置LAN接口(替代方法)..."
+   # More options: https://openwrt.org/docs/guide-user/base-system/basic-networking
+   if [ -n "$lan_ip" ]; then
+      uci set network.lan.ipaddr="$lan_ip"
+      uci commit network
+      log_msg "已设置LAN IP地址: $lan_ip"
    else
-      log_msg "警告: DHCP服务脚本不存在或不可执行"
+      log_msg "未指定LAN IP地址，跳过配置"
    fi
-   
-   # 检查网络接口状态
-   if [ -x /sbin/ifconfig ]; then
-      log_msg "网络接口状态:"
-      /sbin/ifconfig br-lan >> $LOGFILE 2>&1
-   fi
-   
-   log_msg "服务状态检查完成"
+   log_msg "LAN接口配置完成"
 }
 
 ###########################################################################################################################################
@@ -366,29 +152,22 @@ main() {
    # 加载自定义配置
    load_custom_settings
 
-   # 配置网卡接口
-   configure_network_interfaces
-
-   # 配置PPPoE（如果启用）
-   configure_pppoe
+   # 配置LAN接口
+   configure_lan_settings
 
    # 配置无线网络设置
    configure_wifi_settings
 
-   # 配置系统服务
-   configure_system_services
+   # 配置PPPoE（如果启用）
+   configure_pppoe_settings
 
    # 设置编译作者信息
    set_build_author "$build_auth"
    
-   # 检查服务状态
-   check_services_status
-   
    log_msg "所有配置完成"
+   echo "All done!"
 }
 
+###########################################################################################################################################
 # 执行主函数
 main
-
-echo "All done!"
-exit 0

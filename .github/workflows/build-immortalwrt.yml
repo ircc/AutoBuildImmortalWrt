@@ -92,23 +92,20 @@ jobs:
             image_name="immortalwrt/imagebuilder:bcm27xx-bcm2711-openwrt-${firmware_version}"
             # 树莓派4B特定的构建配置
             profile="rpi-4"
-            # 树莓派4B不能设置为单网卡模式
-            enable_single_nic="0"
-            echo "使用树莓派4B配置文件: $profile (禁用单网卡模式)"
+            # 移除单网卡模式设置
+            echo "使用树莓派4B配置文件: $profile"
           else
             # x86-64保持不变
             image_name="immortalwrt/imagebuilder:${platform_type}-openwrt-${firmware_version}"
             # x86-64默认配置
             profile="generic"
-            # x86-64可以使用单网卡模式
-            enable_single_nic="1"
-            echo "使用x86-64配置文件: $profile (启用单网卡模式)"
+            # 移除单网卡模式设置
+            echo "使用x86-64配置文件: $profile"
           fi
           
           echo "使用Docker镜像: $image_name"
           # 将镜像名称保存为环境变量，供后续步骤使用
           echo "IMAGE_NAME=$image_name" >> $GITHUB_ENV
-          echo "ENABLE_SINGLE_NIC=$enable_single_nic" >> $GITHUB_ENV
 
           # 创建bin目录（如果不存在）
           mkdir -p "${{ github.workspace }}/bin"
@@ -131,7 +128,6 @@ jobs:
           FIRMWARE_VERSION="${{ github.event.inputs.firmware_version }}"
           BUILD_PROFILE="${profile}"
           CUSTOM_PACKAGES="${{ github.event.inputs.custom_packages }}"
-          ENABLE_SINGLE_NIC="${enable_single_nic}"
           EOF
 
           echo "环境变量文件创建成功"

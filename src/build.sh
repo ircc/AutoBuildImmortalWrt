@@ -17,12 +17,6 @@ create_custom_settings() {
   mkdir -p ${CONFIG_DIR}
   mkdir -p ${UCI_DEFAULTS_DIR}
 
-  # 确保ENABLE_SINGLE_NIC是数字，如果不是则默认为0
-  if ! [[ "${ENABLE_SINGLE_NIC}" =~ ^[0-1]$ ]]; then
-    echo "警告: ENABLE_SINGLE_NIC 不是有效的数字(0或1)，设置为默认值0"
-    ENABLE_SINGLE_NIC=0
-  fi
-
   # 创建custom配置文件 yml传入环境变写入配置文件 供99-custom.sh读取
   cat << EOF > ${CUSTOM_SETTINGS}
 # 自动生成的配置文件 - $(date '+%Y-%m-%d %H:%M:%S')
@@ -32,7 +26,6 @@ lan_ip=${LAN_IP:-10.0.20.1}
 wifi_name=${WIFI_NAME:-ImmortalWrt}
 wifi_pwd=${WIFI_PWD:-88888888}
 build_auth=${BUILD_AUTH:-Immortal}
-enable_single_nic=${ENABLE_SINGLE_NIC:-0}
 EOF
   # 判断PPPOE_ENABLE是否为yes，如果是则保存PPPOE账号和密码
   if [ "${PPPOE_ENABLE}" = "yes" ]; then
