@@ -62,13 +62,36 @@ jobs:
 
     # 定义作业（工作流）步骤
     steps:
-      - name: 打印环境变量        
+      - name: 打印环境变量
         run: |
           echo "固件版本:${{ github.event.inputs.firmware_version }}"
           echo "固件大小:${{ github.event.inputs.firmware_size }}"
           echo "是否启用PPPoE拨号:${{ github.event.inputs.enable_pppoe }}"
           echo "自定义软件包:${{ github.event.inputs.custom_packages }}"
           echo "固件信息 version:$firmware_version, size:$firmware_sizes"
+
+      - name: 释放磁盘空间
+        run: |
+          echo "释放磁盘空间以确保有足够空间进行编译..."
+          # 显示初始磁盘使用情况
+          df -h
+
+          # 删除不需要的大型软件包和目录
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+
+          # 清理apt缓存
+          sudo apt clean
+          sudo apt autoremove -y
+
+          # 删除不需要的Docker镜像
+          docker system prune -af
+
+          # 显示清理后的磁盘使用情况
+          echo "清理后的磁盘使用情况:"
+          df -h
 
       - name: 1. 检出代码仓库
         uses: actions/checkout@v4
@@ -102,7 +125,7 @@ jobs:
             # 移除单网卡模式设置
             echo "使用x86-64配置文件: $profile"
           fi
-          
+
           echo "使用Docker镜像: $image_name"
           # 将镜像名称保存为环境变量，供后续步骤使用
           echo "IMAGE_NAME=$image_name" >> $GITHUB_ENV
@@ -137,42 +160,54 @@ jobs:
         run: |
           firmware_sizes="${{ github.event.inputs.firmware_size }}"
           platform_type="${{ github.event.inputs.platform_type }}"
-          
+
           # 它将 firmware_sizes 字符串按逗号分隔，拆分成数组 firmware_size_list
           IFS=',' read -r -a firmware_size_list <<< "$firmware_sizes"
-          
+
           # 设置构建状态标志
           build_success=true
 
           # 循环构建不同大小的固件
           for firmware_size in "${firmware_size_list[@]}"; do
+            # 确保固件大小是纯数字
+            firmware_size=$(echo "$firmware_size" | tr -d ' "')
+
             echo "固件信息 platform: $platform_type, version: ${{ github.event.inputs.firmware_version }}, size: $firmware_size"
 
-            # 运行Docker容器进行构建 (使用环境变量文件)
-            # --rm ：容器停止后自动删除，避免占用磁盘空间
-            # -i ：交互模式运行，保持标准输入打开
-            # --user root ：以root用户身份在容器内运行命令，确保有足够权限
-            # -v ：卷挂载
-            # -e ：环境变量传递
+            # 清理Docker缓存，释放空间
+            docker system prune -af --volumes
+
+            # 运行Docker容器进行构建
             docker run --rm -i \
               --user root \
               -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
               -v "${{ github.workspace }}/files:/home/build/immortalwrt/files" \
               -v "${{ github.workspace }}/src:/home/build/immortalwrt/src" \
               --env-file env.list \
-              -e PART_SIZE="${firmware_size}" \
+              -e PART_SIZE="$firmware_size" \
               "${IMAGE_NAME}" \
               /bin/bash /home/build/immortalwrt/src/build.sh
-              
+
             # 检查构建结果
             if [ $? -ne 0 ]; then
               echo "固件大小 ${firmware_size}MB 构建失败！"
               build_success=false
             else
               echo "固件大小 ${firmware_size}MB 构建成功！"
+
+              # 修复权限问题，然后清理不必要的文件
+              echo "复制重要文件并清理不需要的临时文件..."
+              # 先修复权限
+              sudo chown -R $(id -u):$(id -g) "${{ github.workspace }}/bin"
+              # 只保留7z和txt文件
+              find "${{ github.workspace }}/bin/targets" -type f -not -name "*.7z" -not -name "*.txt" -not -name "*.sha256" -exec sudo rm -f {} \; || true
             fi
+
+            # 显示构建后的磁盘空间
+            echo "构建后磁盘空间:"
+            df -h
           done
-          
+
           # 设置构建结果到输出变量
           echo "build_success=$build_success" >> $GITHUB_OUTPUT
           
@@ -228,7 +263,7 @@ jobs:
         run: |
           git push --delete origin ImmortalWrt-${{ github.event.inputs.platform_type }}-${{ github.event.inputs.firmware_version }} || true
         continue-on-error: true
-        
+
       # 清理之前发布的资产文件
       - name: 清理之前的发布资产
         uses: dev-drprasad/delete-tag-and-release@v0.2.1
@@ -249,36 +284,36 @@ jobs:
             - 平台: ${{ github.event.inputs.platform_type }}
             - 版本: ${{ github.event.inputs.firmware_version }}
             - 固件大小: ${{ github.event.inputs.firmware_size }} MB
-            
+
             ### 配置文件
             - config_old.txt - 原始配置文件
             - config_new.txt - 修改后配置文件
-            
+
             ### 软件包信息
             #### 基础软件包
             ```
             ${{ env.BASE_PACKAGES }}
             ```
-            
+
             #### 额外软件包
             ```
             ${{ env.EXTRA_PACKAGES }}
             ```
-            
+
             #### 自定义软件包
             ```
             ${{ env.CUSTOM_PACKAGES }}
             ```
-            
+
             #### 需要安装的软件包
             ```
             ${{ env.PACKAGES }}
             ```
-            
+
             ### 加密固件包
             - 加密方式: 7z加密
             - 密码: 请联系管理员获取
-            
+
             ### 固件SHA256校验和
             请查看附件中的 .sha256 文件
           files: |

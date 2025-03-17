@@ -268,6 +268,38 @@ compress_firmware_encrypted() {
   rm -f "$firmware_list"
 }
 
+# 定义清理磁盘空间的函数
+clean_disk_space() {
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - 清理磁盘空间..."
+  
+  # 显示当前磁盘使用情况
+  df -h
+  
+  # 清理apt缓存
+  apt-get clean
+  
+  # 删除不必要的软件包
+  apt-get autoremove -y
+  
+  # 清理Docker（如果安装了）
+  if command -v docker &> /dev/null; then
+    docker system prune -af
+  fi
+  
+  # 删除不需要的大文件目录
+  rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+  
+  # 清理日志文件
+  find /var/log -type f -delete
+  
+  # 清理临时文件
+  rm -rf /tmp/* /var/tmp/*
+  
+  # 显示清理后的磁盘使用情况
+  echo "清理后的磁盘使用情况:"
+  df -h
+}
+
 # 定义构建镜像的函数
 build_firmware_image() {
   local packages="$1"
@@ -275,14 +307,35 @@ build_firmware_image() {
   local rootfs_size="$3"
   local profile="${4:-generic}"
   
+  # 构建前清理磁盘空间
+  clean_disk_space
+  
   # 去除配置文件名称中可能存在的引号
   profile=$(echo "$profile" | tr -d '"')
   
   # 确保packages变量不包含不匹配的引号和特殊字符
   packages=$(echo "$packages" | tr -d '"' | sed 's/[^a-zA-Z0-9 _-]//g')
   
+  # 确保rootfs_size是纯数字
+  rootfs_size=$(echo "$rootfs_size" | tr -d '"' | sed 's/[^0-9]//g')
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - 使用固件大小: ${rootfs_size}MB"
+  
+  # 检查磁盘空间是否足够
+  local available_space=$(df -m / | awk 'NR==2 {print $4}')
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - 可用磁盘空间: ${available_space}MB"
+  
+  # 如果可用空间小于固件大小的1.5倍，发出警告
+  if [ "$available_space" -lt $((rootfs_size * 3 / 2)) ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - 警告: 可用磁盘空间($available_space MB)可能不足以构建${rootfs_size}MB的固件"
+  fi
+  
+  # 构建前清理编译目录
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - 清理编译临时文件..."
+  rm -rf /home/build/immortalwrt/tmp/* 2>/dev/null || true
+  rm -rf /home/build/immortalwrt/build_dir/target-*/root-* 2>/dev/null || true
+  
   # 构建镜像
-  echo "$(date '+%Y-%m-%d %H:%M:%S') - 构建镜像:$profile..."
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - 构建镜像:$profile, 固件大小:${rootfs_size}MB..."
   make image PROFILE="$profile" PACKAGES="$packages" FILES="$files_dir" ROOTFS_PARTSIZE="$rootfs_size"
   
   # 获取make image编译结果
@@ -293,9 +346,18 @@ build_firmware_image() {
   # 检查make image编译结果
   if [ $build_result -ne 0 ]; then
       echo "$(date '+%Y-%m-%d %H:%M:%S') - 编译失败！！！"
+      # 显示磁盘空间使用情况，帮助诊断
+      echo "编译失败后的磁盘空间:"
+      df -h
       return 1
   else
       echo "$(date '+%Y-%m-%d %H:%M:%S') - 编译成功！！！"
+      
+      # 编译成功后清理临时文件释放空间
+      echo "$(date '+%Y-%m-%d %H:%M:%S') - 清理编译临时文件..."
+      rm -rf /home/build/immortalwrt/tmp/* 2>/dev/null || true
+      rm -rf /home/build/immortalwrt/build_dir/target-*/linux-*/linux-*/.tmp_versions 2>/dev/null || true
+      rm -rf /home/build/immortalwrt/build_dir/target-*/root-* 2>/dev/null || true
       
       # 编译成功后打印固件信息
       print_firmware_info
@@ -417,6 +479,9 @@ print_environment_variables() {
 
 # 定义初始化配置的函数
 initialize_build_config() {
+  # 首先清理磁盘空间
+  clean_disk_space
+  
   # 调用打印环境变量函数
   print_environment_variables
   # 检查环境变量是否正确设置
