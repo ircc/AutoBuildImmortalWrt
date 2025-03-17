@@ -195,6 +195,9 @@ process_packages_config() {
   echo "BASE_PACKAGES=\"$base_packages\"" > /home/build/immortalwrt/bin/packages_info.txt
   echo "EXTRA_PACKAGES=\"$extra_packages\"" >> /home/build/immortalwrt/bin/packages_info.txt
   echo "CUSTOM_PACKAGES=\"$custom_packages\"" >> /home/build/immortalwrt/bin/packages_info.txt
+  echo "BASE_NOT_FOUND=\"$base_not_found\"" >> /home/build/immortalwrt/bin/packages_info.txt
+  echo "EXTRA_NOT_FOUND=\"$extra_not_found\"" >> /home/build/immortalwrt/bin/packages_info.txt
+  echo "CUSTOM_NOT_FOUND=\"$custom_not_found\"" >> /home/build/immortalwrt/bin/packages_info.txt
   echo "PACKAGES=\"$packages\"" >> /home/build/immortalwrt/bin/packages_info.txt
   
   # 返回处理后的PACKAGES变量（这是函数的唯一输出）
