@@ -247,21 +247,16 @@ jobs:
           done
           # 将校验和保存到环境变量
           echo "FIRMWARE_CHECKSUMS<<EOF" >> $GITHUB_ENV
-          echo -e "$CHECKSUMS" >> $GITHUB_ENV
+          echo -e "$CHECKSUMS" | sed '/^$/d' >> $GITHUB_ENV  # 使用sed移除空行
           echo "EOF" >> $GITHUB_ENV
           
-          # 读取包信息文件（如果存在）- 修改为更安全的方式并处理多余引号
+          # 读取包信息文件内容（如果存在）
           if [ -f "${{ github.workspace }}/packages_info.txt" ]; then
-            # 使用grep提取变量值并去除多余引号
-            BASE_PACKAGES=$(grep "^BASE_PACKAGES=" "${{ github.workspace }}/packages_info.txt" | cut -d'=' -f2- | sed 's/^"//;s/"$//;s/""//g')
-            EXTRA_PACKAGES=$(grep "^EXTRA_PACKAGES=" "${{ github.workspace }}/packages_info.txt" | cut -d'=' -f2- | sed 's/^"//;s/"$//;s/""//g')
-            CUSTOM_PACKAGES=$(grep "^CUSTOM_PACKAGES=" "${{ github.workspace }}/packages_info.txt" | cut -d'=' -f2- | sed 's/^"//;s/"$//;s/""//g')
-            PACKAGES=$(grep "^PACKAGES=" "${{ github.workspace }}/packages_info.txt" | cut -d'=' -f2- | sed 's/^"//;s/"$//;s/""//g')
+            # 直接读取整个文件内容到环境变量
+            echo "PACKAGES_INFO<<EOF" >> $GITHUB_ENV
+            cat "${{ github.workspace }}/packages_info.txt" >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
             
-            echo "BASE_PACKAGES=$BASE_PACKAGES" >> $GITHUB_ENV
-            echo "EXTRA_PACKAGES=$EXTRA_PACKAGES" >> $GITHUB_ENV
-            echo "CUSTOM_PACKAGES=$CUSTOM_PACKAGES" >> $GITHUB_ENV
-            echo "PACKAGES=$PACKAGES" >> $GITHUB_ENV
             # 获取当前时间
             echo "BUILD_TIME=$(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
           fi
@@ -292,17 +287,22 @@ jobs:
             - 平台: ${{ github.event.inputs.platform_type }}
             - 版本: ${{ github.event.inputs.firmware_version }}
             - 固件大小: ${{ github.event.inputs.firmware_size }} MB
-            - 构建时间: ${{ env.BUILD_TIME }}
-
-            ### 配置文件
-            - config_old.txt - 原始配置文件
-            - config_new.txt - 修改后配置文件
 
             ### 软件包信息
-            ${{ env.BASE_PACKAGES && format('#### 基础软件包\n```\n{0}\n```\n', env.BASE_PACKAGES) || '' }}
-            ${{ env.EXTRA_PACKAGES && format('#### 额外软件包\n```\n{0}\n```\n', env.EXTRA_PACKAGES) || '' }}
-            ${{ env.CUSTOM_PACKAGES && format('#### 自定义软件包\n```\n{0}\n```\n', env.CUSTOM_PACKAGES) || '' }}
-            ${{ env.PACKAGES && format('#### 需要安装的软件包\n```\n{0}\n```\n', env.PACKAGES) || '' }}
+            ```
+            ${{ env.PACKAGES_INFO }}
+            ```
+            - BASE_PACKAGES: 基础包列表，包含必须安装的软件包
+            - EXTRA_PACKAGES: 额外包列表，包含可选的软件包
+            - CUSTOM_PACKAGES: 自定义包列表，包含用户自定义的软件包
+            - BASE_NOT_FOUND: 记录在 base_packages 中但未在配置文件中找到的包
+            - EXTRA_NOT_FOUND: 记录在 extra_packages 中但未在配置文件中找到的包
+            - CUSTOM_NOT_FOUND: 记录在 custom_packages（打包时手动输入） 中但未在配置文件中找到的包
+            - PACKAGES - 最终的软件包列表，包含所有已安装的软件包
+
+            ### 配置文件
+            - config_old.txt - 原始配置文件（固件包中默认配置）
+            - config_new.txt - 修改后配置文件（原始配置中启用上面被禁用的软件包）
 
             ### 固件SHA256校验和
             ```
@@ -312,7 +312,6 @@ jobs:
             ${{ github.workspace }}/*.7z
             ${{ github.workspace }}/config_old.txt
             ${{ github.workspace }}/config_new.txt
-            ${{ github.workspace }}/packages_info.txt
           token: ${{ secrets.GITHUB_TOKEN }}
           generate_release_notes: false
           draft: false
