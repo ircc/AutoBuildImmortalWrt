@@ -262,6 +262,8 @@ jobs:
             echo "EXTRA_PACKAGES=$EXTRA_PACKAGES" >> $GITHUB_ENV
             echo "CUSTOM_PACKAGES=$CUSTOM_PACKAGES" >> $GITHUB_ENV
             echo "PACKAGES=$PACKAGES" >> $GITHUB_ENV
+            # 获取当前时间
+            echo "BUILD_TIME=$(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
           fi
 
       # 删除已存在的标签
@@ -290,28 +292,17 @@ jobs:
             - 平台: ${{ github.event.inputs.platform_type }}
             - 版本: ${{ github.event.inputs.firmware_version }}
             - 固件大小: ${{ github.event.inputs.firmware_size }} MB
+            - 构建时间: ${{ env.BUILD_TIME }}
 
             ### 配置文件
             - config_old.txt - 原始配置文件
             - config_new.txt - 修改后配置文件
 
             ### 软件包信息
-            #### 基础软件包
-            ```
-            ${{ env.BASE_PACKAGES }}
-            ```
-            #### 额外软件包
-            ```
-            ${{ env.EXTRA_PACKAGES }}
-            ```
-            #### 自定义软件包
-            ```
-            ${{ env.CUSTOM_PACKAGES }}
-            ```
-            #### 需要安装的软件包
-            ```
-            ${{ env.PACKAGES }}
-            ```
+            ${{ env.BASE_PACKAGES && format('#### 基础软件包\n```\n{0}\n```\n', env.BASE_PACKAGES) || '' }}
+            ${{ env.EXTRA_PACKAGES && format('#### 额外软件包\n```\n{0}\n```\n', env.EXTRA_PACKAGES) || '' }}
+            ${{ env.CUSTOM_PACKAGES && format('#### 自定义软件包\n```\n{0}\n```\n', env.CUSTOM_PACKAGES) || '' }}
+            ${{ env.PACKAGES && format('#### 需要安装的软件包\n```\n{0}\n```\n', env.PACKAGES) || '' }}
 
             ### 固件SHA256校验和
             ```
