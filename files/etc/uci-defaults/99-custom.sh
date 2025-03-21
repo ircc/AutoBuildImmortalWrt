@@ -122,7 +122,7 @@ configure_pppoe_settings() {
 # 定义配置无线网络设置
 configure_wifi_settings() {
    log_msg "Starting wireless network configuration..."
-   
+
    # 配置 WLAN
    if [ -n "$wifi_name" ] && [ -n "$wifi_pwd" ] && [ ${#wifi_pwd} -ge 8 ]; then
       # 检查是否有无线设备
@@ -174,13 +174,13 @@ configure_lan_settings() {
          uci set network.lan.type='bridge'
          uci set network.lan.proto='static'
       fi
-      
+
       # 设置IP地址
       uci set network.lan.ipaddr="$lan_ip"
 
       # 确保其他必要设置存在
       uci set network.lan.netmask='255.255.255.0'
-      
+
       # 提交更改
       uci commit network
       log_msg "LAN IP address set: $lan_ip"
@@ -189,7 +189,7 @@ configure_lan_settings() {
       log_msg "Configuring DHCP server..."
       # 获取IP地址的前三个段作为DHCP范围的基础
       local ip_prefix=$(echo "$lan_ip" | cut -d. -f1-3)
-      
+
       # 设置DHCP服务器
       uci set dhcp.lan=dhcp
       uci set dhcp.lan.interface='lan'
@@ -231,7 +231,7 @@ main() {
 
    # 设置编译作者信息
    set_build_author "$build_auth"
-   
+
    log_msg "All configurations completed"
    echo "All done!"
 }

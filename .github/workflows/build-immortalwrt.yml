@@ -210,7 +210,7 @@ jobs:
 
           # 设置构建结果到输出变量
           echo "build_success=$build_success" >> $GITHUB_OUTPUT
-          
+
           # 如果任何一个构建失败，则整体失败
           if [ "$build_success" = "false" ]; then
             echo "至少有一个固件构建失败，请检查日志！"
@@ -222,7 +222,7 @@ jobs:
           # 显示bin目录内容，用于调试
           echo "bin目录内容:"
           find ${{ github.workspace }}/bin -type f | sort
-          
+
           # 只复制7z格式的压缩包到工作目录
           cp ${{ github.workspace }}/bin/*.7z ${{ github.workspace }}/ 2>/dev/null || true
           # 复制配置文件到工作目录
@@ -230,11 +230,11 @@ jobs:
           cp ${{ github.workspace }}/bin/config_new.txt ${{ github.workspace }}/
           # 复制包信息文件到工作目录
           cp ${{ github.workspace }}/bin/packages_info.txt ${{ github.workspace }}/ || true
-          
+
           # 显示当前目录内容，用于调试
           echo "当前工作目录内容:"
           ls -la ${{ github.workspace }}
-          
+
           # 为所有7z包生成SHA-256校验和并保存到环境变量
           CHECKSUMS=""
           for file in ${{ github.workspace }}/*.7z; do
@@ -249,14 +249,14 @@ jobs:
           echo "FIRMWARE_CHECKSUMS<<EOF" >> $GITHUB_ENV
           echo -e "$CHECKSUMS" | sed '/^$/d' >> $GITHUB_ENV  # 使用sed移除空行
           echo "EOF" >> $GITHUB_ENV
-          
+
           # 读取包信息文件内容（如果存在）
           if [ -f "${{ github.workspace }}/packages_info.txt" ]; then
             # 直接读取整个文件内容到环境变量
             echo "PACKAGES_INFO<<EOF" >> $GITHUB_ENV
             cat "${{ github.workspace }}/packages_info.txt" >> $GITHUB_ENV
             echo "EOF" >> $GITHUB_ENV
-            
+
             # 获取当前时间
             echo "BUILD_TIME=$(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
           fi
